@@ -166,11 +166,20 @@ func (e *CodexEngine) GetExecutionSteps(workflowData *WorkflowData, logFile stri
 	// Codex enables web search by default, so we must explicitly set web_search="disabled" to disable it.
 	// The --no-search flag does not exist; use the -c web_search="disabled" config option instead.
 	// See https://developers.openai.com/codex/cli/features#web-search
-	// Leading space is intentional: the format string concatenates this directly after "exec" with no space separator.
+	// Leading space is intentional: these params are concatenated directly and need their own separator.
 	webSearchParam := ` -c web_search="disabled"`
 	if workflowData.ParsedTools != nil && workflowData.ParsedTools.WebSearch != nil {
 		// Web search is enabled by default in Codex; no extra flag needed.
 		webSearchParam = ""
+	}
+
+	// Build fetch parameter: enforce AWF default-deny for fetch unless web-fetch tool is present.
+	// Codex enables fetch by default, so this code explicitly sets fetch="disabled" unless web-fetch is configured.
+	// Leading space is intentional: these params are concatenated directly and need their own separator.
+	webFetchParam := ` -c fetch="disabled"`
+	if workflowData.ParsedTools != nil && workflowData.ParsedTools.WebFetch != nil {
+		// When web-fetch is configured, omit override so Codex default fetch behavior remains enabled.
+		webFetchParam = ""
 	}
 
 	// See https://github.com/github/gh-aw/issues/892
@@ -220,12 +229,12 @@ func (e *CodexEngine) GetExecutionSteps(workflowData *WorkflowData, logFile stri
 		// Harness-wrapped execution: the harness reads --prompt-file and passes its content
 		// as the last positional arg.  The harness also provides retry logic.
 		execPrefix := fmt.Sprintf(`%s %s/%s %s`, nodeRuntimeResolutionCommand, SetupActionDestinationShell, harnessScriptName, commandName)
-		codexCommand = fmt.Sprintf("%s exec%s%s%s%s--prompt-file /tmp/gh-aw/aw-prompts/prompt.txt",
-			execPrefix, modelParam, webSearchParam, executionPolicyParam, customArgsParam)
+		codexCommand = fmt.Sprintf("%s exec%s%s%s%s%s--prompt-file /tmp/gh-aw/aw-prompts/prompt.txt",
+			execPrefix, modelParam, webSearchParam, webFetchParam, executionPolicyParam, customArgsParam)
 	} else {
 		// Without harness: use shell expansion for the prompt (no retry logic).
-		codexCommand = fmt.Sprintf("%s exec%s%s%s%s\"$INSTRUCTION\"",
-			commandName, modelParam, webSearchParam, executionPolicyParam, customArgsParam)
+		codexCommand = fmt.Sprintf("%s exec%s%s%s%s%s\"$INSTRUCTION\"",
+			commandName, modelParam, webSearchParam, webFetchParam, executionPolicyParam, customArgsParam)
 	}
 
 	// Build the full command with agent file handling and AWF wrapping if enabled
