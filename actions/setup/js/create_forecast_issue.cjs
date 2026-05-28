@@ -46,9 +46,10 @@ function buildForecastIssueBody(report, options) {
   const zeroProjectedWithSamples = rows.filter(([, sampledRuns, p50]) => Number(sampledRuns) > 0 && Number(p50) === 0).length;
   const zeroWorkflowWord = zeroProjectedWithSamples === 1 ? "workflow" : "workflows";
   const zeroWorkflowVerb = zeroProjectedWithSamples === 1 ? "has" : "have";
-  const reportTable = rows.length > 0
-    ? ["| Workflow | Sampled runs | Forecast ET (P50) |", "| --- | ---: | ---: |", ...rows.map(([workflowID, sampledRuns, p50]) => `| ${workflowID} | ${sampledRuns} | ${formatET(p50)} |`)].join("\n")
-    : "_No forecast rows were produced._";
+  const reportTable =
+    rows.length > 0
+      ? ["| Workflow | Sampled runs | Forecast ET (P50) |", "| --- | ---: | ---: |", ...rows.map(([workflowID, sampledRuns, p50]) => `| ${workflowID} | ${sampledRuns} | ${formatET(p50)} |`)].join("\n")
+      : "_No forecast rows were produced._";
 
   const repoSlug = `${options.owner}/${options.repo}`;
   const period = report?.period || "month";
@@ -57,15 +58,24 @@ function buildForecastIssueBody(report, options) {
   const outcome = (options.outcome || "success").toLowerCase();
 
   const allProjectedZeroNote = allProjectedZero
-    ? ["> [!NOTE]", "> All projected ET values are 0 even after cache warm-up. This usually means cached run summaries do not include token usage for sampled runs.", "> Verify gh aw logs fetched recent runs and that run_summary.json files include token usage.", ""].join("\n")
+    ? [
+        "> [!NOTE]",
+        "> All projected ET values are 0 even after cache warm-up. This usually means cached run summaries do not include token usage for sampled runs.",
+        "> Verify gh aw logs fetched recent runs and that run_summary.json files include token usage.",
+        "",
+      ].join("\n")
     : "";
-  const zeroProjectedTip = zeroProjectedWithSamples > 0
-    ? ["> [!TIP]", `> ${zeroProjectedWithSamples} ${zeroWorkflowWord} ${zeroWorkflowVerb} sampled runs but forecast ET is 0. This usually indicates missing token usage in cached run summaries for sampled runs.`, "> Increase the warm-up scope with `gh aw logs --start-date -30d --count <larger value>` if this persists.", ""].join("\n")
-    : "";
+  const zeroProjectedTip =
+    zeroProjectedWithSamples > 0
+      ? [
+          "> [!TIP]",
+          `> ${zeroProjectedWithSamples} ${zeroWorkflowWord} ${zeroWorkflowVerb} sampled runs but forecast ET is 0. This usually indicates missing token usage in cached run summaries for sampled runs.`,
+          "> Increase the warm-up scope with `gh aw logs --start-date -30d --count <larger value>` if this persists.",
+          "",
+        ].join("\n")
+      : "";
   const sourceRunLine = runURL ? `_Forecast source run: [#${runID}](${runURL})._` : "";
-  const errorSection = outcome === "success"
-    ? ""
-    : ["> [!WARNING]", `> Forecast outcome: ${outcome}.`, `> ${options.errorMessage || "Forecast computation did not complete successfully."}`].join("\n");
+  const errorSection = outcome === "success" ? "" : ["> [!WARNING]", `> Forecast outcome: ${outcome}.`, `> ${options.errorMessage || "Forecast computation did not complete successfully."}`].join("\n");
 
   return renderTemplateFromFile(getPromptPath(FORECAST_ISSUE_TEMPLATE), {
     repository: repoSlug,
