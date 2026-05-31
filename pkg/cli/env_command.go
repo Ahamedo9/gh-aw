@@ -33,6 +33,7 @@ type defaultsFile struct {
 	DefaultMaxTurns                *string `yaml:"default_max_turns"`
 	DefaultTimeoutMinutes          *string `yaml:"default_timeout_minutes"`
 	DefaultDetectionModel          *string `yaml:"default_detection_model"`
+	DefaultUTC                     *string `yaml:"default_utc"`
 	DefaultModelCopilot            *string `yaml:"default_model_copilot"`
 	DefaultModelClaude             *string `yaml:"default_model_claude"`
 	DefaultModelCodex              *string `yaml:"default_model_codex"`
@@ -96,6 +97,7 @@ var defaultsBindings = []defaultsBinding{
 	{envName: compilerenv.DefaultMaxTurns, fieldName: "default_max_turns", get: func(f *defaultsFile) **string { return &f.DefaultMaxTurns }},
 	{envName: compilerenv.DefaultTimeoutMinutes, fieldName: "default_timeout_minutes", get: func(f *defaultsFile) **string { return &f.DefaultTimeoutMinutes }},
 	{envName: compilerenv.DefaultDetectionModel, fieldName: "default_detection_model", get: func(f *defaultsFile) **string { return &f.DefaultDetectionModel }},
+	{envName: compilerenv.DefaultUTC, fieldName: "default_utc", get: func(f *defaultsFile) **string { return &f.DefaultUTC }},
 	{envName: compilerenv.DefaultModelCopilot, fieldName: "default_model_copilot", get: func(f *defaultsFile) **string { return &f.DefaultModelCopilot }},
 	{envName: compilerenv.DefaultModelClaude, fieldName: "default_model_claude", get: func(f *defaultsFile) **string { return &f.DefaultModelClaude }},
 	{envName: compilerenv.DefaultModelCodex, fieldName: "default_model_codex", get: func(f *defaultsFile) **string { return &f.DefaultModelCodex }},
@@ -289,12 +291,21 @@ func defaultsValidateFile(file *defaultsFile) error {
 			validationErrors = append(validationErrors, field+" cannot be empty when set")
 		}
 	}
+	validateUTCOffset := func(field string, value *string) {
+		if value == nil {
+			return
+		}
+		if _, err := workflow.NormalizeUTCOffset(*value); err != nil {
+			validationErrors = append(validationErrors, field+" "+err.Error())
+		}
+	}
 
 	validateNonZeroInt("default_max_effective_tokens", file.DefaultMaxEffectiveTokens)
 	validateNonZeroInt("default_max_daily_effective_tokens", file.DefaultMaxDailyEffectiveTokens)
 	validatePositiveInt("default_max_turns", file.DefaultMaxTurns)
 	validatePositiveInt("default_timeout_minutes", file.DefaultTimeoutMinutes)
 	validateNonEmpty("default_detection_model", file.DefaultDetectionModel)
+	validateUTCOffset("default_utc", file.DefaultUTC)
 	validateNonEmpty("default_model_copilot", file.DefaultModelCopilot)
 	validateNonEmpty("default_model_claude", file.DefaultModelClaude)
 	validateNonEmpty("default_model_codex", file.DefaultModelCodex)

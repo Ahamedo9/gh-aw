@@ -8,6 +8,7 @@
 //
 //	{
 //	  "ghes": true,               // enables GHES compatibility mode (v3 artifact pins)
+//	  "utc": "-08:00", // project home UTC offset for rendered local times
 //	  "maintenance": {              // enables generation of agentics-maintenance.yml
 //	    "runs_on": "custom runner", // string or string[] – runner label(s) for all
 //	    "action_failure_issue_expires": 72, // expiration (hours) for conclusion failure issues
@@ -30,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/parser"
@@ -116,6 +118,10 @@ type RepoConfig struct {
 	// which are not supported on GHES.
 	GHES bool
 
+	// UTC is the project's home UTC offset used for rendering local times in CLI output.
+	// The value must be a numeric UTC offset such as "+00:00" or "-08:00".
+	UTC string
+
 	// MaintenanceDisabled is true when maintenance has been explicitly set to false
 	// in aw.json, disabling agentic-maintenance generation and any features that
 	// depend on it (such as expires).
@@ -133,6 +139,7 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 	// Use an intermediate struct with json.RawMessage to defer maintenance parsing.
 	var raw struct {
 		GHES        bool            `json:"ghes,omitempty"`
+		UTC         string          `json:"utc,omitempty"`
 		Maintenance json.RawMessage `json:"maintenance,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -140,6 +147,7 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	r.GHES = raw.GHES
+	r.UTC = strings.TrimSpace(raw.UTC)
 
 	if len(raw.Maintenance) == 0 || string(raw.Maintenance) == "null" {
 		return nil
@@ -221,7 +229,18 @@ func validateRepoConfigJSON(data []byte, filePath string) error {
 }
 
 func validateRepoConfigValues(cfg *RepoConfig) error {
-	if cfg == nil || cfg.Maintenance == nil || cfg.Maintenance.Compile == nil {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.UTC != "" {
+		normalized, err := NormalizeUTCOffset(cfg.UTC)
+		if err != nil {
+			return fmt.Errorf("invalid %s: utc %s", RepoConfigFileName, err)
+		}
+		cfg.UTC = normalized
+	}
+
+	if cfg.Maintenance == nil || cfg.Maintenance.Compile == nil {
 		return nil
 	}
 	compileCfg := cfg.Maintenance.Compile
