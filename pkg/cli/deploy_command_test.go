@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -188,4 +189,57 @@ func TestResolveDeployWorkflowSpecs_ResolvesRelativeWildcardLocalPaths(t *testin
 	require.Len(t, workflows, 1)
 
 	assert.Equal(t, filepath.Join(baseDir, "*.md"), workflows[0])
+}
+
+func TestParseDeployCommandOptions_NameFlagWithMultipleWorkflows(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewDeployCommand(func(string) error { return nil })
+	require.NotNil(t, cmd)
+	require.NoError(t, cmd.Flags().Set("name", "custom-workflow"))
+
+	validateEngineCalled := false
+	opts, coolDown, err := parseDeployCommandOptions(cmd, []string{"a", "b"}, func(string) error {
+		validateEngineCalled = true
+		return nil
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--name flag cannot be used when adding multiple workflows at once")
+	assert.Equal(t, AddOptions{}, opts)
+	assert.Zero(t, coolDown)
+	assert.False(t, validateEngineCalled)
+}
+
+func TestParseDeployCommandOptions_InvalidCoolDown(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewDeployCommand(func(string) error { return nil })
+	require.NotNil(t, cmd)
+	require.NoError(t, cmd.Flags().Set("cool-down", "not-a-duration"))
+
+	opts, coolDown, err := parseDeployCommandOptions(cmd, []string{"a"}, func(string) error { return nil })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --cool-down value")
+	assert.Equal(t, AddOptions{}, opts)
+	assert.Zero(t, coolDown)
+}
+
+func TestParseDeployCommandOptions_EngineValidationError(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewDeployCommand(func(string) error { return nil })
+	require.NotNil(t, cmd)
+	require.NoError(t, cmd.Flags().Set("engine", "custom-engine"))
+
+	var validatedEngine string
+	expectedErr := errors.New("engine invalid")
+	opts, coolDown, err := parseDeployCommandOptions(cmd, []string{"a"}, func(engine string) error {
+		validatedEngine = engine
+		return expectedErr
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, expectedErr)
+	assert.Equal(t, "custom-engine", validatedEngine)
+	assert.Equal(t, AddOptions{}, opts)
+	assert.Zero(t, coolDown)
 }
