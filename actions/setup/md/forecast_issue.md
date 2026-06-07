@@ -7,6 +7,6 @@ Period: {period}
 {report_table}
 
 {all_projected_zero_note}
-{zero_projected_tip}
+{run_samples_section}
 {error_section}
 {source_run_line}

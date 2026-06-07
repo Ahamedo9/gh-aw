@@ -256,7 +256,7 @@ func TestForecastWorkflow_LambdaConsistencyAcrossOutputFormats(t *testing.T) {
 		4: 4.6,
 		5: 4.1,
 	}
-	forecastLoadCachedRunAIC = func(runID int64, _ bool) float64 {
+	forecastLoadCachedRunAIC = func(_ context.Context, runID int64, _ bool) float64 {
 		return runAIC[runID]
 	}
 	forecastListWorkflowRunsPaginated = func(_ ListWorkflowRunsOptions) ([]WorkflowRun, int, error) {
@@ -324,7 +324,7 @@ func TestForecastWorkflow_IgnoresSkippedRuns(t *testing.T) {
 		12: 1.0,
 		13: 2.0,
 	}
-	forecastLoadCachedRunAIC = func(runID int64, _ bool) float64 {
+	forecastLoadCachedRunAIC = func(_ context.Context, runID int64, _ bool) float64 {
 		return runAIC[runID]
 	}
 
@@ -356,7 +356,7 @@ func TestForecastWorkflow_RequestsSuccessfulRuns(t *testing.T) {
 		}
 		return runs, len(runs), nil
 	}
-	forecastLoadCachedRunAIC = func(runID int64, _ bool) float64 {
+	forecastLoadCachedRunAIC = func(_ context.Context, runID int64, _ bool) float64 {
 		if runID == 12 {
 			return 1.0
 		}
@@ -421,7 +421,7 @@ func TestLoadCachedRunAIC_UsageArtifactFirst(t *testing.T) {
 		return &TokenUsageSummary{TotalAIC: 12.34}, nil
 	}
 
-	aic := loadCachedRunAIC(999_000_001, false)
+	aic := loadCachedRunAIC(context.Background(), 999_000_001, false)
 	require.InDelta(t, 12.34, aic, 1e-9)
 	require.Equal(t, []string{"usage"}, downloaded)
 }
@@ -446,7 +446,7 @@ func TestLoadCachedRunAIC_DoesNotFallbackToLegacyAgentArtifacts(t *testing.T) {
 		return &TokenUsageSummary{}, nil
 	}
 
-	aic := loadCachedRunAIC(999_000_002, false)
+	aic := loadCachedRunAIC(context.Background(), 999_000_002, false)
 	require.Zero(t, aic)
 	require.Equal(t, []string{"usage"}, downloaded)
 }

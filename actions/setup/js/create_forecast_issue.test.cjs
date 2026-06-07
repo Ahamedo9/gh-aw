@@ -55,14 +55,18 @@ describe("create_forecast_issue", () => {
           {
             workflow_id: "wf|a",
             sampled_runs: 3,
-            monte_carlo: {
-              p50_projected_aic: 12345.6,
-            },
+            p50_aic_per_run: 4000,
+            p95_aic_per_run: 8000,
+            weekly_monte_carlo: { p50_projected_aic: 12345.6 },
+            monthly_monte_carlo: { p50_projected_aic: 52000 },
           },
           {
             workflow_id: "wf-b",
             sampled_runs: 5,
-            projected_aic: 0,
+            p50_aic_per_run: 0,
+            p95_aic_per_run: 0,
+            weekly_projected_aic: 0,
+            monthly_projected_aic: 0,
           },
         ],
       },
@@ -75,10 +79,10 @@ describe("create_forecast_issue", () => {
       }
     );
 
-    expect(body).toContain("| Workflow | Sampled runs | Forecast AIC (P50) |");
-    expect(body).toContain("| wf\\|a | 3 | 12,346 |");
-    expect(body).toContain("> 1 workflow has sampled runs but forecast AIC is 0. This usually indicates missing token usage in cached run summaries for sampled runs.");
+    expect(body).toContain("| Workflow | Runs | P50/Run | P95/Run | Weekly (P50) | Monthly (P50) |");
+    expect(body).toContain("| wf\\|a | 3 | 4,000 | 8,000 | 12,346 | 52,000 |");
     expect(body).toContain("_Forecast source run: [#123456](https://github.com/octo/repo/actions/runs/123456)._");
+    expect(body).not.toContain("sampled runs but forecast AIC is 0");
   });
 
   it("adds all-projected-zero diagnostics when every projected AIC is zero", async () => {
@@ -118,6 +122,75 @@ describe("create_forecast_issue", () => {
     );
 
     expect(body).toContain("| wf-legacy | 2 | 9,999 |");
+  });
+
+  it("renders run samples section in a collapsed details block", async () => {
+    const module = await import("./create_forecast_issue.cjs");
+    const body = module.buildForecastIssueBody(
+      {
+        period: "month",
+        workflows: [
+          {
+            workflow_id: "wf-c",
+            sampled_runs: 2,
+            p50_aic_per_run: 1000,
+            p95_aic_per_run: 2000,
+            weekly_projected_aic: 5000,
+            monthly_projected_aic: 20000,
+            run_samples: [
+              { run_id: 111, date: "2026-01-10", aic: 900 },
+              { run_id: 222, date: "2026-01-11", aic: 1100 },
+            ],
+          },
+        ],
+      },
+      {
+        owner: "octo",
+        repo: "repo",
+        serverUrl: "https://github.com",
+        generatedAtISO: "2026-01-01T00:00:00.000Z",
+      }
+    );
+
+    expect(body).toContain("<details>");
+    expect(body).toContain("Sampled runs used in computation");
+    expect(body).toContain("| wf-c | #111 | 2026-01-10 | 900 |");
+    expect(body).toContain("| wf-c | #222 | 2026-01-11 | 1,100 |");
+  });
+
+  it("renders TOTAL row when multiple workflows are present", async () => {
+    const module = await import("./create_forecast_issue.cjs");
+    const body = module.buildForecastIssueBody(
+      {
+        period: "month",
+        workflows: [
+          {
+            workflow_id: "wf-1",
+            sampled_runs: 3,
+            p50_aic_per_run: 1000,
+            p95_aic_per_run: 2000,
+            weekly_projected_aic: 7000,
+            monthly_projected_aic: 30000,
+          },
+          {
+            workflow_id: "wf-2",
+            sampled_runs: 2,
+            p50_aic_per_run: 500,
+            p95_aic_per_run: 1000,
+            weekly_projected_aic: 3000,
+            monthly_projected_aic: 12000,
+          },
+        ],
+      },
+      {
+        owner: "octo",
+        repo: "repo",
+        serverUrl: "https://github.com",
+        generatedAtISO: "2026-01-01T00:00:00.000Z",
+      }
+    );
+
+    expect(body).toContain("| **TOTAL** | | | | **10,000** | **42,000** |");
   });
 
   it("creates an error issue when report file is missing", async () => {
