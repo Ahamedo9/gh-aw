@@ -1229,7 +1229,7 @@ function buildPermissionDeniedContext(items, workflowId) {
 
 /**
  * Load max-tool-denials guard events from Copilot SDK session events.jsonl files.
- * @returns {Array<{denialCount: number, threshold: number, reason: string}>}
+ * @returns {Array<{denialCount: number, threshold: number, reason: string, recentToolCalls: Array<string>, timestamp: string}>}
  */
 function loadToolDenialsExceededEvents() {
   try {
@@ -1245,11 +1245,22 @@ function loadToolDenialsExceededEvents() {
       if (!fs.existsSync(eventsPath)) continue;
       const content = fs.readFileSync(eventsPath, "utf8");
       const lines = content.split("\n");
+      /** @type {Array<string>} */
+      const recentToolCalls = [];
       for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line) continue;
         try {
           const parsed = JSON.parse(line);
+          if (parsed.type === "tool.execution_start" && parsed.data && typeof parsed.data === "object") {
+            const toolName = typeof parsed.data.toolName === "string" ? parsed.data.toolName.trim() : "";
+            if (toolName) {
+              const mcpServerName = typeof parsed.data.mcpServerName === "string" ? parsed.data.mcpServerName.trim() : "";
+              recentToolCalls.push(mcpServerName ? `${mcpServerName}.${toolName}` : toolName);
+              if (recentToolCalls.length > 5) recentToolCalls.shift();
+            }
+            continue;
+          }
           if (parsed.type !== "guard.tool_denials_exceeded" || !parsed.data || typeof parsed.data !== "object") {
             continue;
           }
@@ -1262,6 +1273,8 @@ function loadToolDenialsExceededEvents() {
             denialCount,
             threshold,
             reason: typeof parsed.data.reason === "string" ? parsed.data.reason.trim() : "",
+            recentToolCalls: recentToolCalls.slice(),
+            timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : "",
           });
         } catch {
           // Skip malformed lines
@@ -1277,7 +1290,7 @@ function loadToolDenialsExceededEvents() {
 
 /**
  * Build context for max-tool-denials guardrail failures from Copilot SDK events.
- * @param {Array<{denialCount: number, threshold: number, reason: string}>} events
+ * @param {Array<{denialCount: number, threshold: number, reason: string, recentToolCalls?: Array<string>, timestamp?: string}>} events
  * @param {string} [workflowId]
  * @returns {string}
  */
@@ -1285,7 +1298,13 @@ function buildToolDenialsExceededContext(events, workflowId) {
   if (!Array.isArray(events) || events.length === 0) {
     return "";
   }
-  const latestEvent = events[events.length - 1];
+  // Select the event with the newest ISO timestamp so the correct lead-up context is
+  // shown when guard events arrive from multiple session directories in arbitrary order.
+  const latestEvent = events.reduce((best, ev) => {
+    const evTs = typeof ev.timestamp === "string" ? ev.timestamp : "";
+    const bestTs = typeof best.timestamp === "string" ? best.timestamp : "";
+    return evTs > bestTs ? ev : best;
+  });
   const denialCount = String(latestEvent.denialCount);
   const threshold = String(latestEvent.threshold);
   const reason = latestEvent.reason || "permission denied by workflow tool permissions";
@@ -1293,6 +1312,7 @@ function buildToolDenialsExceededContext(events, workflowId) {
   // Normalize the reason for display: multi-line programs (e.g. Python 3 heredocs) are
   // collapsed to a single-line summary so the issue body renders cleanly.
   const normalizedReason = normalizeDeniedPermissionCommand(reason);
+  const recentToolCallsList = Array.isArray(latestEvent.recentToolCalls) && latestEvent.recentToolCalls.length > 0 ? latestEvent.recentToolCalls.map(toolCall => `- \`${toolCall}\``).join("\n") : "- _No tool calls captured_";
 
   const templatePath = getPromptPath("tool_denials_exceeded_context.md");
   const template = fs.readFileSync(templatePath, "utf8");
@@ -1302,6 +1322,7 @@ function buildToolDenialsExceededContext(events, workflowId) {
       denial_count: denialCount,
       threshold,
       reason: normalizedReason,
+      recent_tool_calls_list: recentToolCallsList,
       workflow_id: workflowId || "the workflow",
     })
   );
