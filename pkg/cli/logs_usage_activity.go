@@ -64,6 +64,8 @@ func applyUsageActivitySummaryToResult(summary *usageActivitySummary, result *Do
 		return
 	}
 
+	// Preserve previously parsed turn counts (from full session artifacts/events.jsonl)
+	// and only backfill when they are missing.
 	if summary.Session != nil && result.Run.Turns == 0 && summary.Session.Turns > 0 {
 		result.Run.Turns = summary.Session.Turns
 	}
