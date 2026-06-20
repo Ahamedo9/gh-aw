@@ -1192,6 +1192,9 @@ func TestConclusionJobIncludesUsageArtifactSteps(t *testing.T) {
 	if !strings.Contains(allSteps, "/tmp/gh-aw/usage/detection_usage.jsonl") {
 		t.Errorf("Expected usage artifact to include detection_usage.jsonl path.\nGenerated steps:\n%s", allSteps)
 	}
+	if !strings.Contains(allSteps, "/tmp/gh-aw/usage/github_rate_limits.jsonl") {
+		t.Errorf("Expected usage artifact to include GitHub API rate limit usage path.\nGenerated steps:\n%s", allSteps)
+	}
 	if !strings.Contains(allSteps, "/tmp/gh-aw/usage/agent/token_usage.jsonl") {
 		t.Errorf("Expected usage artifact to include agent token usage path.\nGenerated steps:\n%s", allSteps)
 	}
@@ -1215,6 +1218,12 @@ func TestConclusionJobIncludesUsageArtifactSteps(t *testing.T) {
 	}
 	if !strings.Contains(allSteps, "python3 - <<'PY'") {
 		t.Errorf("Expected usage artifact collection to generate activity summary aggregates.\nGenerated steps:\n%s", allSteps)
+	}
+	if !strings.Contains(allSteps, "usage-activity-summary/v1") {
+		t.Errorf("Expected activity summary generator to emit the usage activity schema marker.\nGenerated steps:\n%s", allSteps)
+	}
+	if !strings.Contains(allSteps, "def is_allowed_decision(decision: str) -> bool:") {
+		t.Errorf("Expected activity summary generator to normalize Squid decision markers before counting allowed requests.\nGenerated steps:\n%s", allSteps)
 	}
 	if !strings.Contains(allSteps, "/tmp/gh-aw/usage/activity/summary.json") {
 		t.Errorf("Expected usage artifact to include activity summary path.\nGenerated steps:\n%s", allSteps)

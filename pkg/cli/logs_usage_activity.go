@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+const usageActivitySummarySchema = "usage-activity-summary/v1"
+
 type usageActivitySummary struct {
 	Schema   string                 `json:"schema,omitempty"`
 	Firewall *usageActivityFirewall `json:"firewall,omitempty"`
@@ -49,6 +51,7 @@ func loadUsageActivitySummary(runDir string) (*usageActivitySummary, error) {
 		filepath.Join(runDir, "usage", "activity", "summary.json"),
 		filepath.Join(runDir, "activity", "summary.json"),
 	}
+	var lastErr error
 	for _, candidate := range candidates {
 		cleanPath := filepath.Clean(candidate)
 		raw, err := os.ReadFile(cleanPath)
@@ -60,21 +63,26 @@ func loadUsageActivitySummary(runDir string) (*usageActivitySummary, error) {
 		}
 		var summary usageActivitySummary
 		if err := json.Unmarshal(raw, &summary); err != nil {
-			return nil, fmt.Errorf("parse usage activity summary %s: %w", cleanPath, err)
+			lastErr = fmt.Errorf("parse usage activity summary %s: %w", cleanPath, err)
+			continue
+		}
+		if summary.Schema != usageActivitySummarySchema {
+			lastErr = fmt.Errorf("unsupported usage activity summary schema %q in %s (expected %q)", summary.Schema, cleanPath, usageActivitySummarySchema)
+			continue
 		}
 		return &summary, nil
 	}
-	return nil, nil
+	return nil, lastErr
 }
 
-func applyUsageActivitySummaryToResult(summary *usageActivitySummary, result *DownloadResult) {
+func applyUsageActivitySummaryToResult(summary *usageActivitySummary, result *DownloadResult, allowTurnBackfill bool) {
 	if summary == nil || result == nil {
 		return
 	}
 
 	// Preserve previously parsed turn counts (from full session artifacts/events.jsonl)
 	// and only backfill when they are missing.
-	if summary.Session != nil && result.Run.Turns == 0 && summary.Session.Turns > 0 {
+	if allowTurnBackfill && summary.Session != nil && result.Run.Turns == 0 && summary.Session.Turns > 0 {
 		result.Run.Turns = summary.Session.Turns
 	}
 
@@ -102,7 +110,9 @@ func applyUsageActivitySummaryToResult(summary *usageActivitySummary, result *Do
 			})
 		}
 		result.MCPToolUsage = &MCPToolUsageData{
-			Servers: servers,
+			Summary:   []MCPToolSummary{},
+			ToolCalls: []MCPToolCall{},
+			Servers:   servers,
 		}
 	}
 }
