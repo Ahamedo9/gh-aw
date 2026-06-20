@@ -261,7 +261,7 @@ async function mainNotifyIssue() {
     try {
       const { stdout } = await exec.getExecOutput("git", ["diff", "--name-only", "--", file], { silent: true });
       if (stdout.trim()) {
-        changedFiles.push(file.trim());
+        changedFiles.push(file);
       }
     } catch {
       // file not in repo - skip
@@ -285,8 +285,9 @@ async function mainNotifyIssue() {
     core.warning(`Failed to discard local changes: ${getErrorMessage(error)}`);
   }
 
-  // Close any existing open issues with the auto-upgrade XML marker
-  const markerContent = `gh-aw-workflow-id: ${AUTO_UPGRADE_WORKFLOW_ID}`;
+  // Close any existing open issues with the auto-upgrade XML marker.
+  // Strip the comment delimiters to get the plain text used in search.
+  const markerContent = AUTO_UPGRADE_ISSUE_MARKER.replace(/^<!--\s*/, "").replace(/\s*-->$/, "");
   const searchQuery = `repo:${owner}/${repo} is:issue is:open "${markerContent}" in:body`;
   core.info(`Searching for existing auto-upgrade issues: ${searchQuery}`);
 
