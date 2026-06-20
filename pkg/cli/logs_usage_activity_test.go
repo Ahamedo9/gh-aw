@@ -66,4 +66,3 @@ func TestApplyUsageActivitySummaryToResult(t *testing.T) {
 	assert.Equal(t, 5, result.MCPToolUsage.Servers[0].ToolCallCount)
 	assert.Equal(t, 2, result.MCPToolUsage.Servers[0].ErrorCount)
 }
-

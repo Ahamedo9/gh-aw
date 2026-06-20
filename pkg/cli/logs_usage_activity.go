@@ -8,10 +8,10 @@ import (
 )
 
 type usageActivitySummary struct {
-	Schema   string                      `json:"schema,omitempty"`
-	Firewall *usageActivityFirewall      `json:"firewall,omitempty"`
-	Session  *usageActivitySession       `json:"session,omitempty"`
-	Gateway  *usageActivityGateway       `json:"gateway,omitempty"`
+	Schema   string                 `json:"schema,omitempty"`
+	Firewall *usageActivityFirewall `json:"firewall,omitempty"`
+	Session  *usageActivitySession  `json:"session,omitempty"`
+	Gateway  *usageActivityGateway  `json:"gateway,omitempty"`
 }
 
 type usageActivityFirewall struct {
