@@ -259,42 +259,39 @@ func TestActionFailureIssueExpiresHours_Default(t *testing.T) {
 
 func TestLoadRepoConfig_AutoUpdatesEnabled(t *testing.T) {
 	dir := t.TempDir()
-	writeAWJSON(t, dir, `{"maintenance": {"auto_updates": true}}`)
+	writeAWJSON(t, dir, `{"auto_updates": true}`)
 
 	cfg, err := LoadRepoConfig(dir)
 	require.NoError(t, err, "valid aw.json should load without error")
-	require.NotNil(t, cfg.Maintenance, "maintenance config should be set")
-	require.NotNil(t, cfg.Maintenance.AutoUpdates, "auto_updates should be set")
-	assert.True(t, *cfg.Maintenance.AutoUpdates, "auto_updates should be true")
-	assert.True(t, cfg.Maintenance.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return true")
+	require.NotNil(t, cfg.AutoUpdates, "auto_updates should be set")
+	assert.True(t, *cfg.AutoUpdates, "auto_updates should be true")
+	assert.True(t, cfg.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return true")
 }
 
 func TestLoadRepoConfig_AutoUpdatesDisabled(t *testing.T) {
 	dir := t.TempDir()
-	writeAWJSON(t, dir, `{"maintenance": {"auto_updates": false}}`)
+	writeAWJSON(t, dir, `{"auto_updates": false}`)
 
 	cfg, err := LoadRepoConfig(dir)
 	require.NoError(t, err, "valid aw.json should load without error")
-	require.NotNil(t, cfg.Maintenance, "maintenance config should be set")
-	require.NotNil(t, cfg.Maintenance.AutoUpdates, "auto_updates should be set")
-	assert.False(t, *cfg.Maintenance.AutoUpdates, "auto_updates should be false")
-	assert.False(t, cfg.Maintenance.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return false")
+	require.NotNil(t, cfg.AutoUpdates, "auto_updates should be set")
+	assert.False(t, *cfg.AutoUpdates, "auto_updates should be false")
+	assert.False(t, cfg.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return false")
 }
 
 func TestLoadRepoConfig_AutoUpdatesOmitted(t *testing.T) {
 	dir := t.TempDir()
-	writeAWJSON(t, dir, `{"maintenance": {}}`)
+	writeAWJSON(t, dir, `{}`)
 
 	cfg, err := LoadRepoConfig(dir)
 	require.NoError(t, err, "valid aw.json should load without error")
-	require.NotNil(t, cfg.Maintenance, "maintenance config should be set")
-	assert.Nil(t, cfg.Maintenance.AutoUpdates, "auto_updates should be nil when omitted")
-	assert.False(t, cfg.Maintenance.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return false when omitted (opt-in)")
+	assert.Nil(t, cfg.AutoUpdates, "auto_updates should be nil when omitted")
+	assert.False(t, cfg.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return false when omitted (opt-in)")
 }
 
 func TestIsAutoUpdatesEnabled_NilConfig(t *testing.T) {
-	var m *MaintenanceConfig
-	assert.False(t, m.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return false for nil MaintenanceConfig")
+	var r *RepoConfig
+	assert.False(t, r.IsAutoUpdatesEnabled(), "IsAutoUpdatesEnabled should return false for nil RepoConfig")
 }
 
 // writeAWJSON creates .github/workflows/aw.json with the given JSON content.

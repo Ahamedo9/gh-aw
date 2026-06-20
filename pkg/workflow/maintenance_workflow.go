@@ -145,15 +145,29 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 	repoSlug := opts.RepoSlug
 	maintenanceLog.Print("Checking if maintenance workflow is needed")
 
+	// Compute the resolver and setup action reference early — needed in all code
+	// paths including the maintenance-disabled early-exit path.
+	var resolver SHAResolver
+	for _, workflowData := range workflowDataList {
+		if workflowData != nil && workflowData.ActionResolver != nil {
+			resolver = workflowData.ActionResolver
+			break
+		}
+	}
+	setupActionRef := ResolveSetupActionReference(ctx, actionMode, version, actionTag, resolver)
+	githubScriptPin := getCachedActionPinFromResolver("actions/github-script", resolver)
+
 	// Respect explicit opt-out from aw.json: maintenance: false
 	if repoConfig != nil && repoConfig.MaintenanceDisabled {
 		if err := handleMaintenanceDisabled(workflowDataList, workflowDir); err != nil {
 			return err
 		}
-		// Maintenance is disabled: remove any existing auto-update workflow.
 		return GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
-			WorkflowDir: workflowDir,
-			Enabled:     false,
+			WorkflowDir:     workflowDir,
+			Enabled:         repoConfig.IsAutoUpdatesEnabled(),
+			RepoSlug:        repoSlug,
+			SetupActionRef:  setupActionRef,
+			GitHubScriptPin: githubScriptPin,
 		})
 	}
 
@@ -175,19 +189,6 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 
 	// Scan workflows for expires fields and track the minimum expires value
 	hasExpires, minExpires, triggerReason := scanWorkflowsForExpires(workflowDataList)
-
-	// Get the setup action reference (local or remote based on mode).
-	// Use the first available WorkflowData's ActionResolver to enable SHA pinning.
-	// Computed early so it is available in the !hasExpires path for side-repo workflows.
-	// Iterate to find the first non-nil entry because shared-only compilation paths
-	// may provide nil placeholders.
-	var resolver SHAResolver
-	for _, workflowData := range workflowDataList {
-		if workflowData != nil && workflowData.ActionResolver != nil {
-			resolver = workflowData.ActionResolver
-			break
-		}
-	}
 
 	if !hasExpires {
 		maintenanceLog.Print("No workflows use expires field, skipping maintenance workflow generation")
@@ -219,9 +220,11 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 		}
 
 		return GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
-			WorkflowDir: workflowDir,
-			Enabled:     repoConfig != nil && repoConfig.Maintenance.IsAutoUpdatesEnabled(),
-			RepoSlug:    repoSlug,
+			WorkflowDir:     workflowDir,
+			Enabled:         repoConfig != nil && repoConfig.IsAutoUpdatesEnabled(),
+			RepoSlug:        repoSlug,
+			SetupActionRef:  setupActionRef,
+			GitHubScriptPin: githubScriptPin,
 		})
 	}
 
@@ -295,9 +298,11 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 	}
 
 	return GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
-		WorkflowDir: workflowDir,
-		Enabled:     repoConfig != nil && repoConfig.Maintenance.IsAutoUpdatesEnabled(),
-		RepoSlug:    repoSlug,
+		WorkflowDir:     workflowDir,
+		Enabled:         repoConfig != nil && repoConfig.IsAutoUpdatesEnabled(),
+		RepoSlug:        repoSlug,
+		SetupActionRef:  setupActionRef,
+		GitHubScriptPin: githubScriptPin,
 	})
 }
 

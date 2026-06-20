@@ -24,18 +24,20 @@ func TestGenerateAutoUpdateWorkflow_Enabled(t *testing.T) {
 
 	outputPath := filepath.Join(dir, AutoUpdateWorkflowFileName)
 	data, err := os.ReadFile(outputPath)
-	require.NoError(t, err, "agentic-update.yml should be written")
+	require.NoError(t, err, "agentic-auto-updates.yml should be written")
 
 	content := string(data)
-	assert.Contains(t, content, "name: Agentic Update", "should include workflow name")
+	assert.Contains(t, content, "name: Agentic Auto-Updates", "should include workflow name")
 	assert.Contains(t, content, "cron:", "should include cron schedule")
-	assert.Contains(t, content, "Weekly (auto-update)", "should include schedule comment")
+	assert.Contains(t, content, "Weekly (auto-updates)", "should include schedule comment")
 	assert.Contains(t, content, "workflow_dispatch:", "should include workflow_dispatch trigger")
-	assert.Contains(t, content, "uses: ./.github/workflows/agentics-maintenance.yml", "should call maintenance workflow")
-	assert.Contains(t, content, "operation: update", "should pass update operation")
-	assert.Contains(t, content, "actions: write", "should grant actions: write")
-	assert.Contains(t, content, "contents: write", "should grant contents: write")
-	assert.Contains(t, content, "pull-requests: write", "should grant pull-requests: write")
+	assert.Contains(t, content, "issues: write", "should grant issues: write")
+	assert.Contains(t, content, "run_operation_update_upgrade.cjs", "should inline update JS")
+	assert.Contains(t, content, "GH_AW_OPERATION: update", "should set update operation")
+	assert.NotContains(t, content, "uses: ./.github/workflows/agentics-maintenance.yml", "should not use workflow_call")
+	assert.NotContains(t, content, "actions: write", "should not grant actions: write")
+	assert.NotContains(t, content, "contents: write", "should not grant contents: write")
+	assert.NotContains(t, content, "pull-requests: write", "should not grant pull-requests: write")
 }
 
 func TestGenerateAutoUpdateWorkflow_Disabled(t *testing.T) {
@@ -49,7 +51,7 @@ func TestGenerateAutoUpdateWorkflow_Disabled(t *testing.T) {
 
 	outputPath := filepath.Join(dir, AutoUpdateWorkflowFileName)
 	_, err = os.Stat(outputPath)
-	assert.True(t, os.IsNotExist(err), "agentic-update.yml should not be created when disabled")
+	assert.True(t, os.IsNotExist(err), "agentic-auto-updates.yml should not be created when disabled")
 }
 
 func TestGenerateAutoUpdateWorkflow_DisabledDeletesExistingFile(t *testing.T) {
@@ -66,7 +68,7 @@ func TestGenerateAutoUpdateWorkflow_DisabledDeletesExistingFile(t *testing.T) {
 	require.NoError(t, err, "GenerateAutoUpdateWorkflow should succeed when disabled")
 
 	_, err = os.Stat(outputPath)
-	assert.True(t, os.IsNotExist(err), "existing agentic-update.yml should be deleted when disabled")
+	assert.True(t, os.IsNotExist(err), "existing agentic-auto-updates.yml should be deleted when disabled")
 }
 
 func TestGenerateAutoUpdateWorkflow_CronIsDeterministic(t *testing.T) {
@@ -136,9 +138,27 @@ func TestGenerateAutoUpdateWorkflow_NoRepoSlug(t *testing.T) {
 	assert.Contains(t, string(content), "cron:", "should still generate a cron schedule without repo slug")
 }
 
+func TestGenerateAutoUpdateWorkflow_CustomActionRefs(t *testing.T) {
+	dir := t.TempDir()
+
+	err := GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
+		WorkflowDir:     dir,
+		Enabled:         true,
+		RepoSlug:        "owner/repo",
+		SetupActionRef:  "github/gh-aw/actions/setup@abc123",
+		GitHubScriptPin: "actions/github-script@def456",
+	})
+	require.NoError(t, err, "GenerateAutoUpdateWorkflow should succeed with custom action refs")
+
+	content, err := os.ReadFile(filepath.Join(dir, AutoUpdateWorkflowFileName))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "github/gh-aw/actions/setup@abc123", "should use custom setup action ref")
+	assert.Contains(t, string(content), "actions/github-script@def456", "should use custom github-script pin")
+}
+
 func TestBuildAutoUpdateSeed(t *testing.T) {
-	assert.Equal(t, "owner/repo/agentic-update", buildAutoUpdateSeed("owner/repo"))
-	assert.Equal(t, "agentic-update", buildAutoUpdateSeed(""))
+	assert.Equal(t, "owner/repo/agentic-auto-updates", buildAutoUpdateSeed("owner/repo"))
+	assert.Equal(t, "agentic-auto-updates", buildAutoUpdateSeed(""))
 }
 
 // extractCronLine returns the cron expression from the first `- cron:` line in the YAML.

@@ -14,12 +14,12 @@ import (
 var autoUpdateWorkflowLog = logger.New("workflow:auto_update_workflow")
 
 // AutoUpdateWorkflowFileName is the filename for the generated auto-update workflow.
-const AutoUpdateWorkflowFileName = "agentic-update.yml"
+const AutoUpdateWorkflowFileName = "agentic-auto-updates.yml"
 
 // autoUpdateWorkflowIdentifier is the stable identifier used to scatter the
 // FUZZY:WEEKLY cron schedule. It is combined with the repo slug to ensure
 // that different repositories scatter to different time slots.
-const autoUpdateWorkflowIdentifier = "agentic-update"
+const autoUpdateWorkflowIdentifier = "agentic-auto-updates"
 
 // GenerateAutoUpdateWorkflowOptions configures an auto-update workflow generation run.
 type GenerateAutoUpdateWorkflowOptions struct {
@@ -32,21 +32,29 @@ type GenerateAutoUpdateWorkflowOptions struct {
 	// when the slug is not available; scattering will still succeed using only
 	// the workflow identifier as seed.
 	RepoSlug string
+	// SetupActionRef is the resolved reference for the gh-aw actions/setup action.
+	// For example: "./actions/setup" (dev mode) or "github/gh-aw/actions/setup@<sha>" (release mode).
+	// When empty, "./actions/setup" is used as a fallback.
+	SetupActionRef string
+	// GitHubScriptPin is the pinned reference for actions/github-script.
+	// When empty, getActionPin("actions/github-script") is used as a fallback.
+	GitHubScriptPin string
 }
 
-// GenerateAutoUpdateWorkflow generates or removes the agentic-update.yml workflow
+// GenerateAutoUpdateWorkflow generates or removes the agentic-auto-updates.yml workflow
 // based on whether auto-updates are enabled in the repository's aw.json.
 //
 // When enabled, it generates a workflow that runs on a fuzzy weekly schedule
-// and dispatches the 'update' operation to agentics-maintenance.yml via workflow_call.
+// and inlines the update operation JavaScript to check for and report available
+// workflow updates.
 //
-// When disabled (or when maintenance is disabled), any existing agentic-update.yml
+// When disabled (or when maintenance is disabled), any existing agentic-auto-updates.yml
 // is deleted.
 func GenerateAutoUpdateWorkflow(opts GenerateAutoUpdateWorkflowOptions) error {
 	outputFile := filepath.Join(opts.WorkflowDir, AutoUpdateWorkflowFileName)
 
 	if !opts.Enabled {
-		autoUpdateWorkflowLog.Print("Auto-updates not enabled, removing agentic-update.yml if present")
+		autoUpdateWorkflowLog.Print("Auto-updates not enabled, removing agentic-auto-updates.yml if present")
 		if _, err := os.Stat(outputFile); err == nil {
 			autoUpdateWorkflowLog.Printf("Deleting existing auto-update workflow: %s", outputFile)
 			if err := os.Remove(outputFile); err != nil {
@@ -64,7 +72,16 @@ func GenerateAutoUpdateWorkflow(opts GenerateAutoUpdateWorkflowOptions) error {
 	}
 	autoUpdateWorkflowLog.Printf("Scattered FUZZY:WEEKLY to %q for seed %q", cronSchedule, seed)
 
-	content := buildAutoUpdateWorkflowYAML(cronSchedule)
+	setupActionRef := opts.SetupActionRef
+	if setupActionRef == "" {
+		setupActionRef = "./actions/setup"
+	}
+	githubScriptPin := opts.GitHubScriptPin
+	if githubScriptPin == "" {
+		githubScriptPin = getActionPin("actions/github-script")
+	}
+
+	content := buildAutoUpdateWorkflowYAML(cronSchedule, setupActionRef, githubScriptPin)
 
 	autoUpdateWorkflowLog.Printf("Writing auto-update workflow to %s", outputFile)
 	if err := fileutil.EnsureParentDir(outputFile, constants.DirPermPublic); err != nil {
@@ -88,35 +105,50 @@ func buildAutoUpdateSeed(repoSlug string) string {
 	return autoUpdateWorkflowIdentifier
 }
 
-// buildAutoUpdateWorkflowYAML generates the YAML content for agentic-update.yml.
-func buildAutoUpdateWorkflowYAML(cronSchedule string) string {
+// buildAutoUpdateWorkflowYAML generates the YAML content for agentic-auto-updates.yml.
+func buildAutoUpdateWorkflowYAML(cronSchedule, setupActionRef, githubScriptPin string) string {
 	customInstructions := `Alternative regeneration methods:
   make recompile
 
 Or use the gh-aw CLI directly:
   ./gh-aw compile --validate --verbose
 
-The workflow is generated when maintenance.auto_updates is set to true in aw.json.
+The workflow is generated when auto_updates is set to true in aw.json.
 The weekly schedule is deterministically scattered based on the repository slug.`
 
 	header := GenerateWorkflowHeader("", "pkg/workflow/auto_update_workflow.go", customInstructions)
 
-	return header + `name: Agentic Update
+	return header + `name: Agentic Auto-Updates
 
 on:
   schedule:
-    - cron: "` + cronSchedule + `"  # Weekly (auto-update)
+    - cron: "` + cronSchedule + `"  # Weekly (auto-updates)
   workflow_dispatch:
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  issues: write
 
 jobs:
-  update:
-    uses: ./.github/workflows/agentics-maintenance.yml
-    with:
-      operation: update
+  auto-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Scripts
+        uses: ` + setupActionRef + `
+        with:
+          destination: ${{ runner.temp }}/gh-aw/actions
+
+      - name: Run update
+        uses: ` + githubScriptPin + `
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_AW_OPERATION: update
+          GH_AW_CMD_PREFIX: gh aw
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { setupGlobals } = require('${{ runner.temp }}/gh-aw/actions/setup_globals.cjs');
+            setupGlobals(core, github, context, exec, io, getOctokit);
+            const { main } = require('${{ runner.temp }}/gh-aw/actions/run_operation_update_upgrade.cjs');
+            await main();
 `
 }

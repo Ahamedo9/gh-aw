@@ -18,6 +18,10 @@
       "pattern": "^[+-](?:0\\d|1[0-4]):[0-5]\\d$",
       "examples": ["+00:00", "-08:00", "+05:30"]
     },
+    "auto_updates": {
+      "description": "When true, the compiler generates agentic-auto-updates.yml that runs on a fuzzy weekly schedule and inlines the 'update' operation to check for and report available workflow updates. Defaults to false (opt-in).",
+      "type": "boolean"
+    },
     "maintenance": {
       "description": "Configuration for the agentic-maintenance workflow. Set to false to disable maintenance entirely, or provide an object to configure it.",
       "oneOf": [
@@ -65,10 +69,6 @@
             },
             "label_triggers": {
               "description": "Set to false to disable all label-triggered jobs (disable_agentic_workflow, label_apply_safe_outputs, etc.). When absent or true (default), all label-triggered jobs are included in the maintenance workflow.",
-              "type": "boolean"
-            },
-            "auto_updates": {
-              "description": "When true, the compiler generates agentic-update.yml that runs on a fuzzy weekly schedule and dispatches the 'update' operation to agentics-maintenance.yml via workflow_call. Defaults to false (opt-in).",
               "type": "boolean"
             },
             "compile": {

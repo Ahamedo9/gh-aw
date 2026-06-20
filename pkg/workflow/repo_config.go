@@ -9,11 +9,11 @@
 //	{
 //	  "ghes": true,               // enables GHES compatibility mode (v3 artifact pins)
 //	  "utc": "-08:00", // project home UTC offset for rendered local times
+//	  "auto_updates": true, // set to true to generate agentic-auto-updates.yml with weekly schedule
 //	  "maintenance": {              // enables generation of agentics-maintenance.yml
 //	    "runs_on": "custom runner", // string or string[] – runner label(s) for all
 //	    "action_failure_issue_expires": 72, // expiration (hours) for conclusion failure issues
 //	    "label_triggers": true, // set to true to enable all label-triggered jobs (opt-in)
-//	    "auto_updates": true, // set to true to generate agentic-update.yml with weekly schedule
 //	    "compile": {
 //	      "create_pull_request_github_token": "MY_REPO_TOKEN" // create/update a deduplicated PR instead of an issue
 //	    }
@@ -98,12 +98,6 @@ type MaintenanceConfig struct {
 	// To opt in, set label_triggers: true in aw.json.
 	LabelTriggers *bool `json:"label_triggers,omitempty"`
 
-	// AutoUpdates enables automatic weekly updates via a generated agentic-update.yml
-	// workflow. When true, the compiler generates agentic-update.yml that runs on a
-	// fuzzy weekly schedule and dispatches the 'update' operation to
-	// agentics-maintenance.yml via workflow_call.
-	AutoUpdates *bool `json:"auto_updates,omitempty"`
-
 	// Compile controls compile-workflows maintenance job behavior.
 	Compile *MaintenanceCompileConfig `json:"compile,omitempty"`
 }
@@ -115,15 +109,6 @@ func (m *MaintenanceConfig) IsLabelTriggerEnabled() bool {
 		return false
 	}
 	return *m.LabelTriggers
-}
-
-// IsAutoUpdatesEnabled returns true only when auto_updates is explicitly set to true.
-// The default (nil / omitted) is treated as disabled (false) — opt-in semantics.
-func (m *MaintenanceConfig) IsAutoUpdatesEnabled() bool {
-	if m == nil || m.AutoUpdates == nil {
-		return false
-	}
-	return *m.AutoUpdates
 }
 
 // RepoConfig is the parsed representation of aw.json.
@@ -138,6 +123,12 @@ type RepoConfig struct {
 	// The value must be a numeric UTC offset such as "+00:00" or "-08:00".
 	UTC string
 
+	// AutoUpdates enables generation of agentic-auto-updates.yml when true.
+	// The workflow runs on a fuzzy weekly schedule and runs the update operation
+	// to check for and report available workflow updates.
+	// Opt-in: nil (omitted) or false both disable generation.
+	AutoUpdates *bool
+
 	// MaintenanceDisabled is true when maintenance has been explicitly set to false
 	// in aw.json, disabling agentic-maintenance generation and any features that
 	// depend on it (such as expires).
@@ -149,6 +140,15 @@ type RepoConfig struct {
 	Maintenance *MaintenanceConfig
 }
 
+// IsAutoUpdatesEnabled returns true only when auto_updates is explicitly set to true.
+// The default (nil / omitted) is treated as disabled (false) — opt-in semantics.
+func (r *RepoConfig) IsAutoUpdatesEnabled() bool {
+	if r == nil || r.AutoUpdates == nil {
+		return false
+	}
+	return *r.AutoUpdates
+}
+
 // UnmarshalJSON implements json.Unmarshaler to handle the polymorphic maintenance
 // field, which can be either the boolean false (disable) or a configuration object.
 func (r *RepoConfig) UnmarshalJSON(data []byte) error {
@@ -156,6 +156,7 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		GHES        bool            `json:"ghes,omitempty"`
 		UTC         string          `json:"utc,omitempty"`
+		AutoUpdates *bool           `json:"auto_updates,omitempty"`
 		Maintenance json.RawMessage `json:"maintenance,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -164,6 +165,7 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 
 	r.GHES = raw.GHES
 	r.UTC = strings.TrimSpace(raw.UTC)
+	r.AutoUpdates = raw.AutoUpdates
 
 	if len(raw.Maintenance) == 0 || string(raw.Maintenance) == "null" {
 		return nil
