@@ -316,9 +316,7 @@ func downloadRunArtifactsConcurrent(ctx context.Context, runs []WorkflowRun, out
 
 				// Analyze token usage from firewall proxy logs.
 				// token-usage.jsonl is also available in the compact usage artifact.
-				var tokenUsage *TokenUsageSummary
-				var tokenErr error
-				tokenUsage, tokenErr = analyzeTokenUsage(runOutputDir, verbose)
+				tokenUsage, tokenErr := analyzeTokenUsage(runOutputDir, verbose)
 				if tokenErr != nil {
 					if verbose {
 						fmt.Fprintln(os.Stderr, console.FormatWarningMessage(fmt.Sprintf("Failed to analyze token usage for run %d: %v", run.DatabaseID, tokenErr)))
