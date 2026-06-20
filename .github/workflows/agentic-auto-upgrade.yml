@@ -30,18 +30,18 @@
 # The workflow is generated when auto_updates is set to true in aw.json.
 # The weekly schedule is deterministically scattered based on the repository slug.
 #
-name: Agentic Auto-Updates
+name: Agentic Auto-Upgrade
 
 on:
   schedule:
-    - cron: "22 2 * * 5"  # Weekly (auto-updates)
+    - cron: "11 4 * * 6"  # Weekly (auto-upgrade)
   workflow_dispatch:
 
 permissions:
   issues: write
 
 jobs:
-  auto-updates:
+  auto-upgrade:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Scripts
@@ -49,16 +49,16 @@ jobs:
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
 
-      - name: Run update
+      - name: Run upgrade notification
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_AW_OPERATION: update
+          GH_AW_OPERATION: upgrade
           GH_AW_CMD_PREFIX: gh aw
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { setupGlobals } = require('${{ runner.temp }}/gh-aw/actions/setup_globals.cjs');
             setupGlobals(core, github, context, exec, io, getOctokit);
-            const { main } = require('${{ runner.temp }}/gh-aw/actions/run_operation_update_upgrade.cjs');
-            await main();
+            const { mainNotifyIssue } = require('${{ runner.temp }}/gh-aw/actions/run_operation_update_upgrade.cjs');
+            await mainNotifyIssue();

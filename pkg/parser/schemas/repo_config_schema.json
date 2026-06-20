@@ -19,7 +19,7 @@
       "examples": ["+00:00", "-08:00", "+05:30"]
     },
     "auto_updates": {
-      "description": "When true, the compiler generates agentic-auto-updates.yml that runs on a fuzzy weekly schedule and inlines the 'update' operation to check for and report available workflow updates. Defaults to false (opt-in).",
+      "description": "When true, the compiler generates agentic-auto-upgrade.yml that runs on a fuzzy weekly schedule and inlines the 'upgrade' operation to check for and report available workflow upgrades via a GitHub issue. Defaults to false (opt-in).",
       "type": "boolean"
     },
     "maintenance": {

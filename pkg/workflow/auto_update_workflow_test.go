@@ -24,16 +24,17 @@ func TestGenerateAutoUpdateWorkflow_Enabled(t *testing.T) {
 
 	outputPath := filepath.Join(dir, AutoUpdateWorkflowFileName)
 	data, err := os.ReadFile(outputPath)
-	require.NoError(t, err, "agentic-auto-updates.yml should be written")
+	require.NoError(t, err, "agentic-auto-upgrade.yml should be written")
 
 	content := string(data)
-	assert.Contains(t, content, "name: Agentic Auto-Updates", "should include workflow name")
+	assert.Contains(t, content, "name: Agentic Auto-Upgrade", "should include workflow name")
 	assert.Contains(t, content, "cron:", "should include cron schedule")
-	assert.Contains(t, content, "Weekly (auto-updates)", "should include schedule comment")
+	assert.Contains(t, content, "Weekly (auto-upgrade)", "should include schedule comment")
 	assert.Contains(t, content, "workflow_dispatch:", "should include workflow_dispatch trigger")
 	assert.Contains(t, content, "issues: write", "should grant issues: write")
-	assert.Contains(t, content, "run_operation_update_upgrade.cjs", "should inline update JS")
-	assert.Contains(t, content, "GH_AW_OPERATION: update", "should set update operation")
+	assert.Contains(t, content, "run_operation_update_upgrade.cjs", "should inline upgrade JS")
+	assert.Contains(t, content, "GH_AW_OPERATION: upgrade", "should set upgrade operation")
+	assert.Contains(t, content, "mainNotifyIssue", "should call mainNotifyIssue")
 	assert.NotContains(t, content, "uses: ./.github/workflows/agentics-maintenance.yml", "should not use workflow_call")
 	assert.NotContains(t, content, "actions: write", "should not grant actions: write")
 	assert.NotContains(t, content, "contents: write", "should not grant contents: write")
@@ -51,7 +52,7 @@ func TestGenerateAutoUpdateWorkflow_Disabled(t *testing.T) {
 
 	outputPath := filepath.Join(dir, AutoUpdateWorkflowFileName)
 	_, err = os.Stat(outputPath)
-	assert.True(t, os.IsNotExist(err), "agentic-auto-updates.yml should not be created when disabled")
+	assert.True(t, os.IsNotExist(err), "agentic-auto-upgrade.yml should not be created when disabled")
 }
 
 func TestGenerateAutoUpdateWorkflow_DisabledDeletesExistingFile(t *testing.T) {
@@ -68,7 +69,7 @@ func TestGenerateAutoUpdateWorkflow_DisabledDeletesExistingFile(t *testing.T) {
 	require.NoError(t, err, "GenerateAutoUpdateWorkflow should succeed when disabled")
 
 	_, err = os.Stat(outputPath)
-	assert.True(t, os.IsNotExist(err), "existing agentic-auto-updates.yml should be deleted when disabled")
+	assert.True(t, os.IsNotExist(err), "existing agentic-auto-upgrade.yml should be deleted when disabled")
 }
 
 func TestGenerateAutoUpdateWorkflow_CronIsDeterministic(t *testing.T) {
@@ -157,8 +158,8 @@ func TestGenerateAutoUpdateWorkflow_CustomActionRefs(t *testing.T) {
 }
 
 func TestBuildAutoUpdateSeed(t *testing.T) {
-	assert.Equal(t, "owner/repo/agentic-auto-updates", buildAutoUpdateSeed("owner/repo"))
-	assert.Equal(t, "agentic-auto-updates", buildAutoUpdateSeed(""))
+	assert.Equal(t, "owner/repo/agentic-auto-upgrade", buildAutoUpdateSeed("owner/repo"))
+	assert.Equal(t, "agentic-auto-upgrade", buildAutoUpdateSeed(""))
 }
 
 // extractCronLine returns the cron expression from the first `- cron:` line in the YAML.

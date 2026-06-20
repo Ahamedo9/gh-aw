@@ -13,13 +13,13 @@ import (
 
 var autoUpdateWorkflowLog = logger.New("workflow:auto_update_workflow")
 
-// AutoUpdateWorkflowFileName is the filename for the generated auto-update workflow.
-const AutoUpdateWorkflowFileName = "agentic-auto-updates.yml"
+// AutoUpdateWorkflowFileName is the filename for the generated auto-upgrade workflow.
+const AutoUpdateWorkflowFileName = "agentic-auto-upgrade.yml"
 
 // autoUpdateWorkflowIdentifier is the stable identifier used to scatter the
 // FUZZY:WEEKLY cron schedule. It is combined with the repo slug to ensure
 // that different repositories scatter to different time slots.
-const autoUpdateWorkflowIdentifier = "agentic-auto-updates"
+const autoUpdateWorkflowIdentifier = "agentic-auto-upgrade"
 
 // GenerateAutoUpdateWorkflowOptions configures an auto-update workflow generation run.
 type GenerateAutoUpdateWorkflowOptions struct {
@@ -41,26 +41,26 @@ type GenerateAutoUpdateWorkflowOptions struct {
 	GitHubScriptPin string
 }
 
-// GenerateAutoUpdateWorkflow generates or removes the agentic-auto-updates.yml workflow
+// GenerateAutoUpdateWorkflow generates or removes the agentic-auto-upgrade.yml workflow
 // based on whether auto-updates are enabled in the repository's aw.json.
 //
 // When enabled, it generates a workflow that runs on a fuzzy weekly schedule
-// and inlines the update operation JavaScript to check for and report available
-// workflow updates.
+// and inlines the upgrade operation JavaScript to check for and report available
+// workflow upgrades via a GitHub issue.
 //
-// When disabled (or when maintenance is disabled), any existing agentic-auto-updates.yml
+// When disabled (or when maintenance is disabled), any existing agentic-auto-upgrade.yml
 // is deleted.
 func GenerateAutoUpdateWorkflow(opts GenerateAutoUpdateWorkflowOptions) error {
 	outputFile := filepath.Join(opts.WorkflowDir, AutoUpdateWorkflowFileName)
 
 	if !opts.Enabled {
-		autoUpdateWorkflowLog.Print("Auto-updates not enabled, removing agentic-auto-updates.yml if present")
+		autoUpdateWorkflowLog.Print("Auto-updates not enabled, removing agentic-auto-upgrade.yml if present")
 		if _, err := os.Stat(outputFile); err == nil {
-			autoUpdateWorkflowLog.Printf("Deleting existing auto-update workflow: %s", outputFile)
+			autoUpdateWorkflowLog.Printf("Deleting existing auto-upgrade workflow: %s", outputFile)
 			if err := os.Remove(outputFile); err != nil {
-				return fmt.Errorf("failed to delete auto-update workflow: %w", err)
+				return fmt.Errorf("failed to delete auto-upgrade workflow: %w", err)
 			}
-			autoUpdateWorkflowLog.Print("Auto-update workflow deleted successfully")
+			autoUpdateWorkflowLog.Print("Auto-upgrade workflow deleted successfully")
 		}
 		return nil
 	}
@@ -105,7 +105,7 @@ func buildAutoUpdateSeed(repoSlug string) string {
 	return autoUpdateWorkflowIdentifier
 }
 
-// buildAutoUpdateWorkflowYAML generates the YAML content for agentic-auto-updates.yml.
+// buildAutoUpdateWorkflowYAML generates the YAML content for agentic-auto-upgrade.yml.
 func buildAutoUpdateWorkflowYAML(cronSchedule, setupActionRef, githubScriptPin string) string {
 	customInstructions := `Alternative regeneration methods:
   make recompile
@@ -118,18 +118,18 @@ The weekly schedule is deterministically scattered based on the repository slug.
 
 	header := GenerateWorkflowHeader("", "pkg/workflow/auto_update_workflow.go", customInstructions)
 
-	return header + `name: Agentic Auto-Updates
+	return header + `name: Agentic Auto-Upgrade
 
 on:
   schedule:
-    - cron: "` + cronSchedule + `"  # Weekly (auto-updates)
+    - cron: "` + cronSchedule + `"  # Weekly (auto-upgrade)
   workflow_dispatch:
 
 permissions:
   issues: write
 
 jobs:
-  auto-updates:
+  auto-upgrade:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Scripts
@@ -137,18 +137,18 @@ jobs:
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
 
-      - name: Run update
+      - name: Run upgrade notification
         uses: ` + githubScriptPin + `
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_AW_OPERATION: update
+          GH_AW_OPERATION: upgrade
           GH_AW_CMD_PREFIX: gh aw
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { setupGlobals } = require('${{ runner.temp }}/gh-aw/actions/setup_globals.cjs');
             setupGlobals(core, github, context, exec, io, getOctokit);
-            const { main } = require('${{ runner.temp }}/gh-aw/actions/run_operation_update_upgrade.cjs');
-            await main();
+            const { mainNotifyIssue } = require('${{ runner.temp }}/gh-aw/actions/run_operation_update_upgrade.cjs');
+            await mainNotifyIssue();
 `
 }
