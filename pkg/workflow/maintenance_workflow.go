@@ -147,7 +147,14 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 
 	// Respect explicit opt-out from aw.json: maintenance: false
 	if repoConfig != nil && repoConfig.MaintenanceDisabled {
-		return handleMaintenanceDisabled(workflowDataList, workflowDir)
+		if err := handleMaintenanceDisabled(workflowDataList, workflowDir); err != nil {
+			return err
+		}
+		// Maintenance is disabled: remove any existing auto-update workflow.
+		return GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
+			WorkflowDir: workflowDir,
+			Enabled:     false,
+		})
 	}
 
 	// Determine the runs-on value to use for all maintenance jobs.
@@ -197,7 +204,7 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 
 		// Even without expires, side-repo targets still need maintenance workflows
 		// for safe_outputs, create_labels, and validate operations.
-		return generateAllSideRepoMaintenanceWorkflows(ctx, generateAllSideRepoMaintenanceWorkflowsOptions{
+		if err := generateAllSideRepoMaintenanceWorkflows(ctx, generateAllSideRepoMaintenanceWorkflowsOptions{
 			workflowDataList: workflowDataList,
 			workflowDir:      workflowDir,
 			version:          version,
@@ -207,6 +214,14 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 			resolver:         resolver,
 			hasExpires:       false,
 			minExpiresDays:   0,
+		}); err != nil {
+			return err
+		}
+
+		return GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
+			WorkflowDir: workflowDir,
+			Enabled:     repoConfig != nil && repoConfig.Maintenance.IsAutoUpdatesEnabled(),
+			RepoSlug:    repoSlug,
 		})
 	}
 
@@ -279,7 +294,11 @@ func GenerateMaintenanceWorkflow(ctx context.Context, opts GenerateMaintenanceWo
 		return err
 	}
 
-	return nil
+	return GenerateAutoUpdateWorkflow(GenerateAutoUpdateWorkflowOptions{
+		WorkflowDir: workflowDir,
+		Enabled:     repoConfig != nil && repoConfig.Maintenance.IsAutoUpdatesEnabled(),
+		RepoSlug:    repoSlug,
+	})
 }
 
 // handleMaintenanceDisabled handles the case where maintenance is disabled in repo config.

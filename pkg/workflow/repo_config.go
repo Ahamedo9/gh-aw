@@ -13,6 +13,7 @@
 //	    "runs_on": "custom runner", // string or string[] – runner label(s) for all
 //	    "action_failure_issue_expires": 72, // expiration (hours) for conclusion failure issues
 //	    "label_triggers": true, // set to true to enable all label-triggered jobs (opt-in)
+//	    "auto_updates": true, // set to true to generate agentic-update.yml with weekly schedule
 //	    "compile": {
 //	      "create_pull_request_github_token": "MY_REPO_TOKEN" // create/update a deduplicated PR instead of an issue
 //	    }
@@ -97,6 +98,12 @@ type MaintenanceConfig struct {
 	// To opt in, set label_triggers: true in aw.json.
 	LabelTriggers *bool `json:"label_triggers,omitempty"`
 
+	// AutoUpdates enables automatic weekly updates via a generated agentic-update.yml
+	// workflow. When true, the compiler generates agentic-update.yml that runs on a
+	// fuzzy weekly schedule and dispatches the 'update' operation to
+	// agentics-maintenance.yml via workflow_call.
+	AutoUpdates *bool `json:"auto_updates,omitempty"`
+
 	// Compile controls compile-workflows maintenance job behavior.
 	Compile *MaintenanceCompileConfig `json:"compile,omitempty"`
 }
@@ -108,6 +115,15 @@ func (m *MaintenanceConfig) IsLabelTriggerEnabled() bool {
 		return false
 	}
 	return *m.LabelTriggers
+}
+
+// IsAutoUpdatesEnabled returns true only when auto_updates is explicitly set to true.
+// The default (nil / omitted) is treated as disabled (false) — opt-in semantics.
+func (m *MaintenanceConfig) IsAutoUpdatesEnabled() bool {
+	if m == nil || m.AutoUpdates == nil {
+		return false
+	}
+	return *m.AutoUpdates
 }
 
 // RepoConfig is the parsed representation of aw.json.

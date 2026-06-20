@@ -67,6 +67,10 @@
               "description": "Set to false to disable all label-triggered jobs (disable_agentic_workflow, label_apply_safe_outputs, etc.). When absent or true (default), all label-triggered jobs are included in the maintenance workflow.",
               "type": "boolean"
             },
+            "auto_updates": {
+              "description": "When true, the compiler generates agentic-update.yml that runs on a fuzzy weekly schedule and dispatches the 'update' operation to agentics-maintenance.yml via workflow_call. Defaults to false (opt-in).",
+              "type": "boolean"
+            },
             "compile": {
               "description": "Configuration for the compile-workflows maintenance job.",
               "type": "object",
