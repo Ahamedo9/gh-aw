@@ -81,7 +81,9 @@ func applyUsageActivitySummaryToResult(summary *usageActivitySummary, result *Do
 		servers := make([]MCPServerStats, 0, len(summary.Gateway.Servers))
 		for _, server := range summary.Gateway.Servers {
 			servers = append(servers, MCPServerStats{
-				ServerName:    server.ServerName,
+				ServerName: server.ServerName,
+				// Keep both RequestCount and ToolCallCount aligned because MCPServerStats
+				// exposes both fields in reports; for usage aggregates we only have call counts.
 				RequestCount:  server.ToolCallCount,
 				ToolCallCount: server.ToolCallCount,
 				ErrorCount:    server.FailedCalls,
