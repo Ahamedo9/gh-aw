@@ -100,8 +100,9 @@ import (
 
 var yamlLog = logger.New("workflow:yaml")
 
-// yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
-var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
+// yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance).
+// Uses (?m) multi-line mode to match $ at every newline.
+var yamlNullPattern = regexp.MustCompile(`(?m):\s*null\s*$`)
 
 // unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
 var unquoteYAMLKeyCache sync.Map
@@ -437,13 +438,9 @@ func recursivelyOrderYAMLValue(value any) any {
 func CleanYAMLNullValues(yamlStr string) string {
 	yamlLog.Print("Cleaning null values from YAML")
 
-	// Split into lines, process each line, and rejoin
-	lines := strings.Split(yamlStr, "\n")
-	for i, line := range lines {
-		lines[i] = yamlNullPattern.ReplaceAllString(line, ":")
-	}
-
-	return strings.Join(lines, "\n")
+	// Apply regex to the entire string at once using multi-line mode.
+	// This avoids O(N) allocations from splitting and joining lines.
+	return yamlNullPattern.ReplaceAllString(yamlStr, ":")
 }
 
 // formatYAMLValue formats a value for YAML output, quoting strings and rendering
