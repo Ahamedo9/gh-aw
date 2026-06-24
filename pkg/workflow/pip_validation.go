@@ -76,7 +76,8 @@ func (c *Compiler) validatePythonPackagesWithPip(packages []string, packageType 
 
 		// Use pip index to check if package exists on PyPI
 		// Include --pre flag to check for pre-release versions (alpha, beta, rc)
-		cmd := exec.Command(pipCmd, "index", "versions", pkgName, "--pre")
+		// Pass -- to prevent the package name being interpreted as a flag (argument injection defence).
+		cmd := exec.Command(pipCmd, "index", "versions", "--pre", "--", pkgName)
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -182,7 +183,8 @@ func (c *Compiler) validateUvPackages(workflowData *WorkflowData) error {
 		}
 
 		// Use uv pip show to check if package exists on PyPI
-		cmd := exec.Command("uv", "pip", "show", pkgName, "--no-cache")
+		// Pass -- to prevent the package name being interpreted as a flag (argument injection defence).
+		cmd := exec.Command("uv", "pip", "show", "--no-cache", "--", pkgName)
 		_, err := cmd.CombinedOutput()
 
 		if err != nil {

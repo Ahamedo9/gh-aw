@@ -139,7 +139,8 @@ func validateDockerImage(image string, verbose bool, requireDocker bool) error {
 	}
 
 	// Try to inspect the image (will succeed if image exists locally)
-	cmd := exec.Command("docker", "image", "inspect", image)
+	// Pass -- to prevent the image name being interpreted as a flag (argument injection defence).
+	cmd := exec.Command("docker", "image", "inspect", "--", image)
 	_, err = cmd.CombinedOutput()
 
 	if err == nil {
@@ -159,7 +160,8 @@ func validateDockerImage(image string, verbose bool, requireDocker bool) error {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		dockerValidationLog.Printf("Attempt %d of %d: Pulling image %s", attempt, maxAttempts, image)
 
-		pullCmd := exec.Command("docker", "pull", image)
+		// Pass -- to prevent the image name being interpreted as a flag (argument injection defence).
+		pullCmd := exec.Command("docker", "pull", "--", image)
 		pullOutput, pullErr := pullCmd.CombinedOutput()
 		outputStr := strings.TrimSpace(string(pullOutput))
 
