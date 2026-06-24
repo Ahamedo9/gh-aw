@@ -6,10 +6,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/parser"
-	"github.com/goccy/go-yaml"
+	"github.com/github/gh-aw/pkg/setutil"
 )
 
 var frontmatterLog = logger.New("workflow:frontmatter_extraction")
@@ -162,7 +164,28 @@ func (c *Compiler) commentOutProcessedFieldsInOnSection(yamlStr string, frontmat
 	deploymentStatusIndent := -1
 	workflowRunIndent := -1
 	// activateEventSection resets all event-section flags and then activates the selected section.
+	// It also clears every top-level on: extension-array tracker (inBotsArray, inRolesArray,
+	// inSkipIfCheckFailing, etc.) before entering the new section.  This reset is required
+	// because each activateEventSection call ends with "continue", which bypasses the
+	// indent-based deactivation logic further down the loop.  Without the explicit reset here,
+	// a stale flag from a preceding bots:/roles:/skip-if-check-failing: block would cause that
+	// section's list items (e.g. "workflow_run.workflows: - CI") to be incorrectly commented out.
 	activateEventSection := func(section string, indent int) {
+		// Clear all top-level on: extension-array state so no sibling section leaks in.
+		inSkipRolesArray = false
+		inSkipBotsArray = false
+		inRolesArray = false
+		inBotsArray = false
+		inLabelsArray = false
+		inNeedsArray = false
+		// These trackers share the same exit-check-ordering issue: their deactivation
+		// logic runs after the "continue" that terminates each activateEventSection call,
+		// so they must also be reset here explicitly.
+		inSkipIfMatch = false
+		inSkipIfNoMatch = false
+		inSkipIfCheckFailing = false
+		inSkipAuthorAssociations = false
+
 		inPullRequest = section == "pull_request"
 		inIssues = section == "issues"
 		inDiscussion = section == "discussion"
@@ -674,7 +697,7 @@ func (c *Compiler) commentOutProcessedFieldsInOnSection(yamlStr string, frontmat
 			commentReason = " # Lock-for-agent processed as issue locking in activation job"
 		} else if (inPullRequest || inIssues || inDiscussion || inIssueComment) && strings.HasPrefix(trimmedLine, "names:") {
 			// Only comment out names if NOT using native label filtering for this section
-			if !hasStringKey(nativeLabelFilterSections, currentSection) {
+			if !setutil.Contains(nativeLabelFilterSections, currentSection) {
 				shouldComment = true
 				commentReason = " # Label filtering applied via job conditions"
 			}
@@ -682,7 +705,7 @@ func (c *Compiler) commentOutProcessedFieldsInOnSection(yamlStr string, frontmat
 			// Check if we're in a names array (after "names:" line)
 			// Look back to see if the previous uncommented line was "names:"
 			// Only do this if NOT using native label filtering for this section
-			if !hasStringKey(nativeLabelFilterSections, currentSection) {
+			if !setutil.Contains(nativeLabelFilterSections, currentSection) {
 				if len(result) > 0 {
 					for i := range slices.Backward(result) {
 						prevLine := result[i]

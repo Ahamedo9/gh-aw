@@ -48,12 +48,16 @@ safe-outputs:
     max: 1
     close-older-issues: true
     expires: false
+  threat-detection:
+    engine: copilot
 timeout-minutes: 180
 imports:
   - shared/reporting.md
 
 
   - shared/otlp.md
+features:
+  gh-aw-detection: true
 ---
 
 # Agent Persona Explorer

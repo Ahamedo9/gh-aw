@@ -399,8 +399,8 @@ func TestCopilotEngineExecutionStepsWithCopilotSDKCustomDriver(t *testing.T) {
 	workflowData := &WorkflowData{
 		Name: "test-workflow",
 		EngineConfig: &EngineConfig{
-			CopilotSDK:       true,
-			CopilotSDKDriver: ".github/drivers/custom_copilot_sdk_driver.cjs",
+			CopilotSDK: true,
+			Driver:     ".github/drivers/custom_copilot_sdk_driver.cjs",
 		},
 	}
 
@@ -448,8 +448,8 @@ func TestCopilotEngineExecutionStepsWithCopilotSDKPythonDriver(t *testing.T) {
 	workflowData := &WorkflowData{
 		Name: "test-workflow",
 		EngineConfig: &EngineConfig{
-			CopilotSDK:       true,
-			CopilotSDKDriver: "my_driver.py",
+			CopilotSDK: true,
+			Driver:     "my_driver.py",
 		},
 	}
 
@@ -472,8 +472,8 @@ func TestCopilotEngineExecutionStepsWithCopilotSDKTypeScriptDriver(t *testing.T)
 	workflowData := &WorkflowData{
 		Name: "test-workflow",
 		EngineConfig: &EngineConfig{
-			CopilotSDK:       true,
-			CopilotSDKDriver: "my_driver.ts",
+			CopilotSDK: true,
+			Driver:     "my_driver.ts",
 		},
 	}
 
@@ -496,8 +496,8 @@ func TestCopilotEngineExecutionStepsWithCopilotSDKRubyDriver(t *testing.T) {
 	workflowData := &WorkflowData{
 		Name: "test-workflow",
 		EngineConfig: &EngineConfig{
-			CopilotSDK:       true,
-			CopilotSDKDriver: "my_driver.rb",
+			CopilotSDK: true,
+			Driver:     "my_driver.rb",
 		},
 	}
 
@@ -520,8 +520,8 @@ func TestCopilotEngineExecutionStepsWithCopilotSDKArbitraryDriver(t *testing.T) 
 	workflowData := &WorkflowData{
 		Name: "test-workflow",
 		EngineConfig: &EngineConfig{
-			CopilotSDK:       true,
-			CopilotSDKDriver: "my-copilot-driver",
+			CopilotSDK: true,
+			Driver:     "my-copilot-driver",
 		},
 	}
 
@@ -1457,7 +1457,7 @@ func TestCopilotEngineRenderGitHubMCPConfig(t *testing.T) {
 				`"type": "stdio",`,
 				`"container": "ghcr.io/github/github-mcp-server:` + string(constants.DefaultGitHubMCPServerVersion) + `"`,
 				`"env": {`,
-				`"GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_MCP_SERVER_TOKEN}"`,
+				`"GITHUB_PERSONAL_ACCESS_TOKEN": "\\${GITHUB_MCP_SERVER_TOKEN}"`,
 				`},`,
 			},
 		},
@@ -1472,14 +1472,14 @@ func TestCopilotEngineRenderGitHubMCPConfig(t *testing.T) {
 				`"type": "stdio",`,
 				`"container": "ghcr.io/github/github-mcp-server:v1.2.3"`,
 				`"env": {`,
-				`"GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_MCP_SERVER_TOKEN}"`,
+				`"GITHUB_PERSONAL_ACCESS_TOKEN": "\\${GITHUB_MCP_SERVER_TOKEN}"`,
 				`}`,
 			},
 		},
 		{
 			name: "GitHub MCP with allowed tools",
 			githubTool: map[string]any{
-				"allowed": []string{"list_workflows", "get_file_contents"},
+				"allowed": []string{"actions_list", "get_file_contents"},
 			},
 			isLast: true,
 			expectedStrs: []string{
@@ -2275,8 +2275,8 @@ func TestCopilotEngineInstallationWithCopilotSDKDriver(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			workflowData := &WorkflowData{
 				EngineConfig: &EngineConfig{
-					CopilotSDK:       true,
-					CopilotSDKDriver: tt.driver,
+					CopilotSDK: true,
+					Driver:     tt.driver,
 				},
 			}
 
@@ -2894,5 +2894,38 @@ func TestSanitizeCopilotShellCommand(t *testing.T) {
 				t.Errorf("sanitizeCopilotShellCommand(%q) changed = %v, want %v", tt.input, changed, tt.expectedChanged)
 			}
 		})
+	}
+}
+
+func TestCopilotEngineLLMProviderAnthropicAutoBYOK(t *testing.T) {
+	engine := NewCopilotEngine()
+	workflowData := &WorkflowData{
+		Name: "test-workflow",
+		EngineConfig: &EngineConfig{
+			LLMProvider: "anthropic",
+		},
+		NetworkPermissions: &NetworkPermissions{
+			Firewall: &FirewallConfig{Enabled: true},
+		},
+	}
+
+	steps := engine.GetExecutionSteps(workflowData, "/tmp/gh-aw/test.log")
+	if len(steps) != 1 {
+		t.Fatalf("Expected 1 execution step, got %d", len(steps))
+	}
+	stepContent := strings.Join([]string(steps[0]), "\n")
+
+	if !strings.Contains(stepContent, "GH_AW_LLM_PROVIDER: anthropic") {
+		t.Errorf("Expected GH_AW_LLM_PROVIDER override, got:\n%s", stepContent)
+	}
+	if !strings.Contains(stepContent, "COPILOT_PROVIDER_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}") {
+		t.Errorf("Expected COPILOT_PROVIDER_API_KEY derived from Anthropic secret, got:\n%s", stepContent)
+	}
+	expectedBaseURL := "COPILOT_PROVIDER_BASE_URL: http://host.docker.internal:" + strconv.Itoa(constants.ClaudeLLMGatewayPort)
+	if !strings.Contains(stepContent, expectedBaseURL) {
+		t.Errorf("Expected COPILOT_PROVIDER_BASE_URL for anthropic gateway, got:\n%s", stepContent)
+	}
+	if strings.Contains(stepContent, "COPILOT_GITHUB_TOKEN:") {
+		t.Errorf("COPILOT_GITHUB_TOKEN should be omitted in auto-BYOK mode, got:\n%s", stepContent)
 	}
 }

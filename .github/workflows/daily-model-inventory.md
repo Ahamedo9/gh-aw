@@ -17,7 +17,7 @@ tracker-id: daily-model-inventory
 engine:
   id: copilot
   copilot-sdk: true
-  copilot-sdk-driver: .github/drivers/copilot_sdk_driver_sample_node.cjs
+  driver: .github/drivers/copilot_sdk_driver_sample_node.cjs
 strict: true
 timeout-minutes: 30
 
@@ -323,6 +323,8 @@ safe-outputs:
 
 imports:
   - shared/otlp.md
+features:
+  gh-aw-detection: true
 ---
 
 # Daily Model Inventory Checker

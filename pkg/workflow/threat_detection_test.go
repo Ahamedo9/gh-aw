@@ -1102,9 +1102,9 @@ func TestPrepareDetectionFilesStepWarnsWhenPromptContextMissingOrEmpty(t *testin
 }
 
 // TestDetectionJobLevelCondition verifies that the detection job-level `if:` condition
-// skips the job entirely when the agent produced no outputs and no patch.
-// This prevents the detection job from wasting a runner and ensures safe_outputs is
-// also correctly skipped (since it gates on needs.detection.result == 'success').
+// always runs the detection job when the agent ran (not skipped), regardless of whether
+// the agent produced any outputs. This ensures detection is never bypassed for noop/boop runs;
+// the detection_guard step inside the job handles the no-output case.
 func TestDetectionJobLevelCondition(t *testing.T) {
 	compiler := NewCompiler()
 
@@ -1142,14 +1142,13 @@ func TestDetectionJobLevelCondition(t *testing.T) {
 		t.Errorf("Expected detection job condition to check for skipped status, got: %q", condition)
 	}
 
-	// Must check output_types and has_patch so the job is skipped at job-level
-	// when the agent produced nothing (avoiding unnecessary runner usage and
-	// preventing safe_outputs from running when there is nothing to publish).
-	if !strings.Contains(condition, "needs."+string(constants.AgentJobName)+".outputs.output_types") {
-		t.Errorf("Expected detection job condition to check output_types, got: %q", condition)
+	// Must NOT require output_types or has_patch — detection runs unconditionally when the agent ran,
+	// and the detection_guard step inside the job handles the no-output case.
+	if strings.Contains(condition, "outputs.output_types") {
+		t.Errorf("Detection job condition must not gate on output_types; got: %q", condition)
 	}
-	if !strings.Contains(condition, "needs."+string(constants.AgentJobName)+".outputs.has_patch") {
-		t.Errorf("Expected detection job condition to check has_patch, got: %q", condition)
+	if strings.Contains(condition, "outputs.has_patch") {
+		t.Errorf("Detection job condition must not gate on has_patch; got: %q", condition)
 	}
 }
 
@@ -1836,6 +1835,67 @@ func TestCleanFirewallDirsStepOrdering(t *testing.T) {
 	}
 }
 
+func TestBuildDetectionJobStepsCodexExternalDetectorIncludesContainerDownload(t *testing.T) {
+	// Regression test: when engine=codex and gh-aw-detection feature is enabled (external
+	// detector path), the detection job must include a "Download container images" step.
+	// Previously the step was omitted under the incorrect assumption that MCP setup generation
+	// would emit it — MCP setup is only called for the inline codex detection path.
+	compiler := NewCompiler()
+
+	t.Run("codex with gh-aw-detection includes Download container images", func(t *testing.T) {
+		data := &WorkflowData{
+			AI: "codex",
+			SafeOutputs: &SafeOutputsConfig{
+				ThreatDetection: &ThreatDetectionConfig{},
+			},
+			Features: map[string]any{
+				string(constants.GHAWDetectionFeatureFlag): true,
+			},
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Type: SandboxTypeAWF,
+				},
+			},
+		}
+
+		steps := compiler.buildDetectionJobSteps(data)
+		joined := strings.Join(steps, "")
+
+		if !strings.Contains(joined, "Download container images") {
+			t.Errorf("expected 'Download container images' step in codex external detector detection job steps\ngot:\n%s", joined)
+		}
+		if !strings.Contains(joined, "download_docker_images.sh") {
+			t.Errorf("expected 'download_docker_images.sh' in detection job steps\ngot:\n%s", joined)
+		}
+	})
+
+	t.Run("codex without gh-aw-detection emits exactly one container download (inline path via MCP setup)", func(t *testing.T) {
+		data := &WorkflowData{
+			AI: "codex",
+			SafeOutputs: &SafeOutputsConfig{
+				ThreatDetection: &ThreatDetectionConfig{},
+			},
+			Features: map[string]any{},
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Type: SandboxTypeAWF,
+				},
+			},
+		}
+
+		steps := compiler.buildDetectionJobSteps(data)
+		joined := strings.Join(steps, "")
+
+		// For the inline codex path, MCP setup generation (inside buildDetectionEngineExecutionStep)
+		// emits the "Download container images" step exactly once. buildPullAWFContainersStep must
+		// NOT also emit it, or the step would appear twice and trip duplicate-step validation.
+		downloadCount := strings.Count(joined, "Download container images")
+		if downloadCount != 1 {
+			t.Errorf("expected exactly one 'Download container images' step for inline codex path, got %d\n%s", downloadCount, joined)
+		}
+	})
+}
+
 func TestBuildPullAWFContainersStepPropagatesFeatures(t *testing.T) {
 	compiler := NewCompiler()
 
@@ -2044,7 +2104,7 @@ func TestBuildDetectionEngineExecutionStepPropagatesHarnessScriptOverride(t *tes
 	}
 }
 
-func TestBuildDetectionEngineExecutionStepOmitsPiCooldownEnv(t *testing.T) {
+func TestBuildDetectionEngineExecutionStepUsesCopilotForPi(t *testing.T) {
 	compiler := NewCompiler()
 
 	data := &WorkflowData{
@@ -2063,11 +2123,11 @@ func TestBuildDetectionEngineExecutionStepOmitsPiCooldownEnv(t *testing.T) {
 	}
 
 	rendered := strings.Join(steps, "")
-	if !strings.Contains(rendered, "Install Pi CLI") {
-		t.Fatal("expected detection steps to include the Pi install step")
+	if !strings.Contains(rendered, "Install GitHub Copilot CLI") {
+		t.Fatal("expected detection steps to include the Copilot install step for pi workflows")
 	}
-	if strings.Contains(rendered, "NPM_CONFIG_MIN_RELEASE_AGE:") {
-		t.Fatalf("expected detection steps to omit npm cooldown env for Pi installs")
+	if strings.Contains(rendered, "Install Pi CLI") {
+		t.Fatal("expected detection steps to avoid Pi install step")
 	}
 }
 

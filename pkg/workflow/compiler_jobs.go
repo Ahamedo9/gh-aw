@@ -7,12 +7,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/github/gh-aw/pkg/setutil"
 	"github.com/github/gh-aw/pkg/stringutil"
+
+	"github.com/goccy/go-yaml"
 
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/sliceutil"
-	"github.com/goccy/go-yaml"
 )
 
 var compilerJobsLog = logger.New("workflow:compiler_jobs")
@@ -494,7 +496,7 @@ func (c *Compiler) ensureConclusionIsLastJob() error {
 	sort.Strings(jobNames)
 
 	for _, jobName := range jobNames {
-		if hasStringKey(exclude, jobName) || hasStringKey(currentNeeds, jobName) {
+		if setutil.Contains(exclude, jobName) || setutil.Contains(currentNeeds, jobName) {
 			continue
 		}
 		conclusionJob.Needs = append(conclusionJob.Needs, jobName)
@@ -644,8 +646,8 @@ func (c *Compiler) applyAutomaticActivationDependency(
 	// This ensures custom jobs wait for workflow validation before executing.
 	// Exception: jobs whose outputs are referenced in the markdown body run before activation
 	// (so the activation job can include their outputs in the prompt).
-	isReferencedInMarkdown := hasStringKey(promptReferencedJobs, jobName)
-	isOnNeedsDependency := hasStringKey(onNeedsJobs, jobName)
+	isReferencedInMarkdown := setutil.Contains(promptReferencedJobs, jobName)
+	isOnNeedsDependency := setutil.Contains(onNeedsJobs, jobName)
 
 	if !hasExplicitNeeds && activationJobCreated && !isReferencedInMarkdown && !isOnNeedsDependency {
 		job.Needs = append(job.Needs, string(constants.ActivationJobName))
@@ -1216,8 +1218,12 @@ func (c *Compiler) extractPinnedJobSteps(fieldName string, jobName string, confi
 			return nil, fmt.Errorf("failed to convert %s to typed step for job '%s': %w", fieldName, jobName, err)
 		}
 
-		pinnedStep := applyActionPinToTypedStep(typedStep, data)
+		pinnedStep, err := applyActionPinToTypedStep(typedStep, data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pin action for %s in job '%s': %w", fieldName, jobName, err)
+		}
 		finalStepMap := pinnedStep.ToMap()
+		ensureCheckoutPersistCredentials(finalStepMap)
 		sanitizedMap, warnings, _ := sanitizeRunStepExpressions(finalStepMap)
 		for _, w := range warnings {
 			compilerJobsLog.Printf("sanitized run: expression in job '%s' step: %s", jobName, w)
@@ -1230,6 +1236,39 @@ func (c *Compiler) extractPinnedJobSteps(fieldName string, jobName string, confi
 	}
 
 	return pinnedSteps, nil
+}
+
+// ensureCheckoutPersistCredentials enforces with.persist-credentials: false for
+// actions/checkout steps when not explicitly configured by the user.
+func ensureCheckoutPersistCredentials(stepMap map[string]any) {
+	uses, ok := stepMap["uses"].(string)
+	if !ok || !isCheckoutAction(uses) {
+		return
+	}
+
+	withRaw, hasWith := stepMap["with"]
+	if !hasWith || withRaw == nil {
+		stepMap["with"] = map[string]any{
+			"persist-credentials": false,
+		}
+		return
+	}
+
+	withMap, ok := withRaw.(map[string]any)
+	if !ok {
+		return
+	}
+	if v, exists := withMap["persist-credentials"]; exists && v != nil {
+		return
+	}
+	withMap["persist-credentials"] = false
+}
+
+// isCheckoutAction reports whether a uses value points to actions/checkout,
+// including either unpinned or version-pinned forms.
+func isCheckoutAction(uses string) bool {
+	trimmed := strings.Trim(strings.TrimSpace(uses), "\"'")
+	return strings.EqualFold(trimmed, "actions/checkout") || strings.HasPrefix(strings.ToLower(trimmed), "actions/checkout@")
 }
 
 // shouldAddCheckoutStep returns true if the workflow requires a checkout step.

@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"charm.land/huh/v2"
+
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
+	"github.com/github/gh-aw/pkg/setutil"
 	"github.com/github/gh-aw/pkg/sliceutil"
 	"github.com/github/gh-aw/pkg/styles"
 	"github.com/github/gh-aw/pkg/workflow"
@@ -46,7 +48,7 @@ func (c *AddInteractiveConfig) selectAIEngineAndKey() error {
 		// Priority 1: Check existing repository secrets using EngineOptions
 		// This takes precedence over workflow preference since users should use what's already available
 		for _, opt := range constants.EngineOptions {
-			if hasStringKey(c.existingSecrets, opt.SecretName) {
+			if setutil.Contains(c.existingSecrets, opt.SecretName) {
 				defaultEngine = opt.Value
 				addInteractiveLog.Printf("Found existing secret %s, recommending engine: %s", opt.SecretName, opt.Value)
 				break
@@ -94,7 +96,7 @@ func (c *AddInteractiveConfig) selectAIEngineAndKey() error {
 		// Add markers for secret availability and workflow specification.
 		// opt may be nil for catalog engines not yet represented in EngineOptions;
 		// in that case we conservatively show '[no secret]'.
-		if opt != nil && hasStringKey(c.existingSecrets, opt.SecretName) {
+		if opt != nil && setutil.Contains(c.existingSecrets, opt.SecretName) {
 			label += " [secret exists]"
 		} else {
 			label += " [no secret]"
@@ -142,15 +144,15 @@ func (c *AddInteractiveConfig) selectAIEngineAndKey() error {
 func (c *AddInteractiveConfig) configureEngineAPISecret(engine string) error {
 	addInteractiveLog.Printf("Collecting API key for engine: %s", engine)
 
-	// If --skip-secret flag is set, skip secrets configuration entirely.
-	// Note: for Copilot workflows, --skip-secret implies the PAT path; users who want
-	// copilot-requests (org billing) should not pass --skip-secret.
+	// If --no-secret flag is set, skip secrets configuration entirely.
+	// Note: for Copilot workflows, --no-secret implies the PAT path; users who want
+	// copilot-requests (org billing) should not pass --no-secret.
 	if c.SkipSecret {
 		opt := constants.GetEngineOption(engine)
 		if opt != nil {
-			fmt.Fprintln(os.Stderr, console.FormatInfoMessage(fmt.Sprintf("Skipping %s secret setup (--skip-secret flag set).", opt.SecretName)))
+			fmt.Fprintln(os.Stderr, console.FormatInfoMessage(fmt.Sprintf("Skipping %s secret setup (--no-secret flag set).", opt.SecretName)))
 		} else {
-			fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Skipping secret setup (--skip-secret flag set)."))
+			fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Skipping secret setup (--no-secret flag set)."))
 		}
 		return nil
 	}

@@ -21,7 +21,7 @@ func TestRenderGitHubCopilotMCPConfig_AllowedTools(t *testing.T) {
 		{
 			name: "GitHub with specific allowed tools",
 			githubTool: map[string]any{
-				"allowed": []string{"list_workflows", "list_workflow_runs", "list_workflow_run_artifacts"},
+				"allowed": []string{"actions_list", "actions_get", "get_job_logs"},
 			},
 			isLast: true,
 			expectedContent: []string{
@@ -29,7 +29,7 @@ func TestRenderGitHubCopilotMCPConfig_AllowedTools(t *testing.T) {
 				`"type": "stdio"`,
 				`"container": "ghcr.io/github/github-mcp-server:` + string(constants.DefaultGitHubMCPServerVersion) + `"`,
 				`"env": {`,
-				`"GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_MCP_SERVER_TOKEN}"`,
+				`"GITHUB_PERSONAL_ACCESS_TOKEN": "\\${GITHUB_MCP_SERVER_TOKEN}"`,
 			},
 			unexpectedContent: []string{},
 		},

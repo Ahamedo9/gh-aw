@@ -11,15 +11,16 @@ const HANDLER_TYPE = "update_issue";
 const { resolveTarget, checkRequiredFilter } = require("./safe_output_helpers.cjs");
 const { createUpdateHandlerFactory, createStandardResolveNumber, createStandardFormatResult } = require("./update_handler_factory.cjs");
 const { updateBody } = require("./update_pr_description_helpers.cjs");
+const { buildCommonEntityUpdateData } = require("./update_entity_helpers.cjs");
 const { loadTemporaryProjectMap, replaceTemporaryProjectReferences } = require("./temporary_id.cjs");
-const { sanitizeTitle } = require("./sanitize_title.cjs");
 const { tryEnforceArrayLimit } = require("./limit_enforcement_helpers.cjs");
 const { ERR_VALIDATION } = require("./error_codes.cjs");
-const { parseBoolTemplatable } = require("./templatable.cjs");
 const { buildWorkflowRunUrl } = require("./workflow_metadata_helpers.cjs");
 const { generateHistoryUrl } = require("./generate_history_link.cjs");
 const { fetchIssueState, mergeIssueState } = require("./safe_output_execution_metadata.cjs");
 const { MAX_LABELS, MAX_ASSIGNEES } = require("./constants.cjs");
+const { fetchAllRepoLabels } = require("./github_api_helpers.cjs");
+const { buildIssueIntentLabelUpdates, getIssueIntentLabelNames, hasIssueIntentsRuntimeFeature, normalizeIssueIntentLabelSpecs } = require("./issue_intents.cjs");
 
 /**
  * Execute the issue update API call
@@ -36,17 +37,30 @@ async function executeIssueUpdate(github, context, issueNumber, updateData) {
   let rawBody = updateData._rawBody;
   const includeFooter = updateData._includeFooter !== false; // Default to true
   const titlePrefix = updateData._titlePrefix || "";
+  const labelsWereProvided = updateData.labels !== undefined;
+  const labelSpecs = labelsWereProvided ? normalizeIssueIntentLabelSpecs(updateData.labels) : undefined;
+  const useIssueIntentLabels = Boolean(labelSpecs) && hasIssueIntentsRuntimeFeature();
 
   // Remove internal fields
   const { _operation, _rawBody, _includeFooter, _titlePrefix, _workflowRepo, ...apiData } = updateData;
+  if (labelSpecs) {
+    apiData.labels = getIssueIntentLabelNames(labelSpecs);
+  }
+  if (useIssueIntentLabels) {
+    delete apiData.labels;
+  }
+
+  /** @type {any | null} */
+  let currentIssue = null;
 
   // Fetch current issue if needed (title prefix validation or body update)
-  if (titlePrefix || rawBody !== undefined) {
-    const { data: currentIssue } = await github.rest.issues.get({
+  if (titlePrefix || rawBody !== undefined || useIssueIntentLabels) {
+    const response = await github.rest.issues.get({
       owner: context.repo.owner,
       repo: context.repo.repo,
       issue_number: issueNumber,
     });
+    currentIssue = response.data;
 
     // Validate title prefix if specified
     if (titlePrefix) {
@@ -103,12 +117,48 @@ async function executeIssueUpdate(github, context, issueNumber, updateData) {
     }
   }
 
-  const { data: issue } = await github.rest.issues.update({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    issue_number: issueNumber,
-    ...apiData,
-  });
+  /** @type {any} */
+  let issue = currentIssue;
+  if (Object.keys(apiData).length > 0) {
+    const response = await github.rest.issues.update({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issueNumber,
+      ...apiData,
+    });
+    issue = response.data;
+  }
+
+  if (useIssueIntentLabels && labelSpecs) {
+    const issueNodeId = issue?.node_id || currentIssue?.node_id;
+    if (!issueNodeId) {
+      throw new Error(`Failed to resolve GraphQL node ID for issue #${issueNumber}`);
+    }
+
+    const repoLabels = await fetchAllRepoLabels(github, context.repo.owner, context.repo.repo);
+    const labelIdByName = new Map(repoLabels.map(label => [label.name.toLowerCase(), label.id]));
+    const labels = buildIssueIntentLabelUpdates(labelSpecs, labelIdByName);
+    const result = await github.graphql(
+      `mutation($issueId: ID!, $labels: [LabelUpdateInput!]!) {
+        updateIssue(input: { id: $issueId, labels: $labels }) {
+          issue {
+            id
+            labels(first: 100) {
+              nodes {
+                name
+              }
+            }
+          }
+        }
+      }`,
+      { issueId: issueNodeId, labels }
+    );
+
+    issue = {
+      ...(issue || currentIssue || {}),
+      labels: result?.updateIssue?.issue?.labels?.nodes || [],
+    };
+  }
 
   return issue;
 }
@@ -131,23 +181,15 @@ const resolveIssueNumber = createStandardResolveNumber({
  * @returns {{success: true, data: Object} | {success: false, error: string}} Update data result
  */
 function buildIssueUpdateData(item, config) {
-  const updateData = {};
+  // hasCommonUpdates is not needed here: the issue handler always continues to check
+  // entity-specific fields (state, labels, assignees, milestone, title prefix).
+  const { updateData } = buildCommonEntityUpdateData(item, config, {
+    defaultOperation: "append",
+    onBodyDisallowed: () => {
+      core.warning("Body update not allowed by safe-outputs configuration");
+    },
+  });
 
-  if (item.title !== undefined) {
-    // Sanitize title for Unicode security
-    updateData.title = sanitizeTitle(item.title);
-  }
-  // Check if body updates are allowed (defaults to true if not specified)
-  const canUpdateBody = config.allow_body !== false;
-  if (item.body !== undefined && canUpdateBody) {
-    // Store operation information for consistent footer/append behavior.
-    // Default to "append" so we preserve the original issue text.
-    updateData._operation = item.operation || "append";
-    updateData._rawBody = item.body;
-  } else if (item.body !== undefined && !canUpdateBody) {
-    // Body update attempted but not allowed by configuration
-    core.warning("Body update not allowed by safe-outputs configuration");
-  }
   // The safe-outputs schema uses "status" (open/closed), while the GitHub API uses "state".
   // Accept both for compatibility.
   if (item.state !== undefined) {
@@ -177,9 +219,6 @@ function buildIssueUpdateData(item, config) {
     core.warning(`Issue update limit exceeded: ${assigneesLimitResult.error}`);
     return { success: false, error: assigneesLimitResult.error };
   }
-
-  // Pass footer config to executeUpdate (default to true)
-  updateData._includeFooter = parseBoolTemplatable(config.footer, true);
 
   // Store title prefix for validation in executeIssueUpdate
   if (config.title_prefix) {

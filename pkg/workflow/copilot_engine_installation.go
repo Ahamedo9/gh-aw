@@ -41,7 +41,8 @@ const workspaceCommandPrefix = `cd "${GITHUB_WORKSPACE}" && `
 //     (BYOK mode — the external provider handles authentication, so COPILOT_GITHUB_TOKEN
 //     is not required for model routing).
 func (e *CopilotEngine) GetSecretValidationStep(workflowData *WorkflowData) GitHubActionStep {
-	if hasCopilotRequestsWritePermission(workflowData) {
+	provider := e.ResolveLLMProvider(workflowData)
+	if provider == LLMProviderGitHub && hasCopilotRequestsWritePermission(workflowData) {
 		copilotInstallLog.Print("Skipping secret validation step: permissions.copilot-requests=write enabled, using GitHub Actions token")
 		return GitHubActionStep{}
 	}
@@ -53,9 +54,9 @@ func (e *CopilotEngine) GetSecretValidationStep(workflowData *WorkflowData) GitH
 	}
 	return BuildDefaultSecretValidationStep(
 		workflowData,
-		[]string{"COPILOT_GITHUB_TOKEN"},
+		llmProviderSecretNames(provider),
 		"GitHub Copilot CLI",
-		"https://github.github.com/gh-aw/reference/engines/#github-copilot-default",
+		llmProviderDocsURL(provider),
 	)
 }
 
@@ -130,8 +131,8 @@ func buildCopilotSDKInstallStep(workflowData *WorkflowData) GitHubActionStep {
 	// file extension to determine which language SDK to install. This ensures the correct SDK
 	// package manager command is generated (e.g., pip for .py drivers, ruby/gem for .rb drivers).
 	command := workflowData.EngineConfig.Command
-	if command == "" && workflowData.EngineConfig.CopilotSDKDriver != "" {
-		command = sdkDriverInstallCommand(workflowData.EngineConfig.CopilotSDKDriver)
+	if command == "" && workflowData.EngineConfig.Driver != "" {
+		command = sdkDriverInstallCommand(workflowData.EngineConfig.Driver)
 	}
 	spec := getCopilotSDKInstallSpec(command)
 	copilotInstallLog.Printf("copilot-sdk enabled; runtime=%s; install command=%s", spec.runtimeID, spec.command)

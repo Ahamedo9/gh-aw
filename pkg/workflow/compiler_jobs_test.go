@@ -969,6 +969,71 @@ jobs:
 		"- name: Checkout repo",
 		"- name: Main work",
 	)
+	assert.Contains(t, customJobSection, "persist-credentials: false", "custom job checkout should disable credential persistence by default")
+}
+
+func TestCustomJobCheckoutPreservesExplicitPersistCredentialsTrue(t *testing.T) {
+	tmpDir := testutil.TempDir(t, "custom-job-checkout-persist-true")
+
+	frontmatter := `---
+on: push
+permissions:
+  contents: read
+engine: copilot
+strict: false
+jobs:
+  custom_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+---
+
+# Test Workflow
+`
+
+	testFile := filepath.Join(tmpDir, "test.md")
+	if err := os.WriteFile(testFile, []byte(frontmatter), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	compiler := NewCompiler()
+	if err := compiler.CompileWorkflow(testFile); err != nil {
+		t.Fatalf("CompileWorkflow() error: %v", err)
+	}
+
+	lockFile := filepath.Join(tmpDir, "test.lock.yml")
+	content, err := os.ReadFile(lockFile)
+	if err != nil {
+		t.Fatalf("Failed to read lock file: %v", err)
+	}
+
+	yamlStr := string(content)
+	customJobSection := extractJobSection(yamlStr, "custom_job")
+	if customJobSection == "" {
+		t.Fatal("Expected custom_job section in lock file")
+	}
+
+	assert.Contains(t, customJobSection, "persist-credentials: true", "explicit persist-credentials: true should be preserved")
+	assert.NotContains(t, customJobSection, "persist-credentials: false", "compiler should not override explicit persist-credentials: true")
+}
+
+func TestCustomJobCheckoutHardensNullPersistCredentials(t *testing.T) {
+	// A nil value for persist-credentials (YAML null) must be treated as absent
+	// and hardened to false. The compiler rejects YAML null in with-fields before
+	// reaching this function, but direct unit coverage guards against future
+	// code paths that could pass a nil value through.
+	stepMap := map[string]any{
+		"uses": "actions/checkout@v6",
+		"with": map[string]any{
+			"persist-credentials": nil,
+		},
+	}
+	ensureCheckoutPersistCredentials(stepMap)
+	withMap, _ := stepMap["with"].(map[string]any)
+	assert.Equal(t, false, withMap["persist-credentials"], "null persist-credentials should be hardened to false")
 }
 
 func TestPreStepsInsertAfterSetupBoundary(t *testing.T) {
@@ -3672,6 +3737,7 @@ func TestPushRepoMemoryJobConditionalDetection(t *testing.T) {
 
 // TestUpdateCacheMemoryJobConditionalDetection verifies that update_cache_memory keeps always()
 // but requires detection success (not skipped) when detection is expression-controlled.
+// Detection always runs when the agent ran (even for noop), so 'success' is sufficient.
 func TestUpdateCacheMemoryJobConditionalDetection(t *testing.T) {
 	compiler := NewCompiler()
 	compiler.jobManager = NewJobManager()

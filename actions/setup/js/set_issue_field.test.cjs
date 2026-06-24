@@ -99,6 +99,33 @@ describe("set_issue_field (Handler Factory Architecture)", () => {
     expect(typeof result).toBe("function");
   });
 
+  it("should resolve issue number from temporary_id when create_issue precedes set_issue_field in same batch", async () => {
+    const message = {
+      type: "set_issue_field",
+      issue_number: "#aw_smoke_issue",
+      field_name: "Customer Impact",
+      value: "High",
+    };
+
+    const resolvedTemporaryIds = {
+      aw_smoke_issue: { repo: "test-owner/test-repo", number: 42 },
+    };
+
+    const result = await handler(message, resolvedTemporaryIds);
+
+    expect(result.success).toBe(true);
+    expect(result.issue_number).toBe(42);
+    expect(result.field_name).toBe("Customer Impact");
+    expect(result.field_node_id).toBe(textFieldId);
+    expect(mockGraphql).toHaveBeenCalledWith(
+      expect.stringContaining("setIssueFieldValue"),
+      expect.objectContaining({
+        issueId: issueNodeId,
+        issueFields: [expect.objectContaining({ fieldId: textFieldId, textValue: "High" })],
+      })
+    );
+  });
+
   it("should set issue text field successfully", async () => {
     const message = {
       type: "set_issue_field",
@@ -385,5 +412,45 @@ describe("set_issue_field (Handler Factory Architecture)", () => {
     // Must surface the actual error
     expect(result.error).toContain("Selections can't be made directly on unions");
     expect(mockCore.warning).not.toHaveBeenCalledWith(expect.stringContaining("No issue fields were discovered"));
+  });
+
+  it("should include issue intent metadata when runtime feature is enabled", async () => {
+    process.env.GH_AW_RUNTIME_FEATURES = "issue_intents";
+
+    try {
+      const { main } = require("./set_issue_field.cjs");
+      const featureHandler = await main({ max: 5 });
+
+      const result = await featureHandler(
+        {
+          type: "set_issue_field",
+          issue_number: 42,
+          field_name: "Customer Impact",
+          value: "High",
+          rationale: "Customer-reported with SLA breach risk",
+          confidence: "high",
+          suggest: true,
+        },
+        {}
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockGraphql).toHaveBeenCalledWith(
+        expect.stringContaining("setIssueFieldValue"),
+        expect.objectContaining({
+          issueFields: [
+            expect.objectContaining({
+              fieldId: textFieldId,
+              textValue: "High",
+              rationale: "Customer-reported with SLA breach risk",
+              confidence: "HIGH",
+              suggest: true,
+            }),
+          ],
+        })
+      );
+    } finally {
+      delete process.env.GH_AW_RUNTIME_FEATURES;
+    }
   });
 });

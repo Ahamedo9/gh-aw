@@ -8,6 +8,7 @@ This package currently provides custom Go analyzers in the following subpackages
 
 - `contextcancelnotdeferred` — reports context cancel functions that are called directly instead of deferred.
 - `ctxbackground` — reports `context.Background()` calls inside functions that already receive a `context.Context` parameter.
+- `deferinloop` — reports `defer` statements placed directly inside `for`/`range` loop bodies, which execute when the enclosing function returns rather than each iteration and can cause resource leaks.
 - `errorfwrapv` — reports `fmt.Errorf` calls that format error arguments with `%v` instead of `%w`.
 - `excessivefuncparams` — reports function declarations that exceed a configurable parameter-count threshold.
 - `errormessage` — reports non-actionable error-message patterns in changed files.
@@ -35,6 +36,7 @@ This package currently provides custom Go analyzers in the following subpackages
 - `timesleepnocontext` — reports `time.Sleep` calls inside functions that already receive a `context.Context`, where a context-aware `select` should be used instead.
 - `tolowerequalfold` — reports case-insensitive string comparisons using `strings.ToLower`/`ToUpper` that should use `strings.EqualFold`.
 - `uncheckedtypeassertion` — reports single-value type assertions where unchecked panics are possible.
+- `wgdonenotdeferred` — reports non-deferred `sync.WaitGroup.Done()` calls that can deadlock on panics or early returns.
 - `internal` — shared helper packages for analyzers (file checks and `nolint` handling).
 
 ## Public API
@@ -45,6 +47,7 @@ This package currently provides custom Go analyzers in the following subpackages
 |------------|-------------|
 | `contextcancelnotdeferred` | Custom `go/analysis` analyzer that flags context cancel functions called directly instead of deferred |
 | `ctxbackground` | Custom `go/analysis` analyzer that flags `context.Background()` calls inside functions that already receive a context parameter |
+| `deferinloop` | Custom `go/analysis` analyzer that flags `defer` statements inside `for`/`range` loop bodies that execute when the enclosing function returns rather than each iteration |
 | `errorfwrapv` | Custom `go/analysis` analyzer that flags `fmt.Errorf` calls that format error arguments with `%v` instead of `%w` |
 | `excessivefuncparams` | Custom `go/analysis` analyzer that flags function declarations with too many positional parameters |
 | `errormessage` | Custom `go/analysis` analyzer that flags non-actionable error message patterns in changed files |
@@ -72,6 +75,7 @@ This package currently provides custom Go analyzers in the following subpackages
 | `timesleepnocontext` | Custom `go/analysis` analyzer that flags `time.Sleep` calls in context-aware functions |
 | `tolowerequalfold` | Custom `go/analysis` analyzer that flags case-insensitive comparisons via `strings.ToLower`/`ToUpper` that should use `strings.EqualFold` |
 | `uncheckedtypeassertion` | Custom `go/analysis` analyzer that flags unchecked single-value type assertions |
+| `wgdonenotdeferred` | Custom `go/analysis` analyzer that flags non-deferred `sync.WaitGroup.Done()` calls |
 | `internal` | Shared helper subpackages used by analyzers (`internal/filecheck`, `internal/nolint`) |
 
 ### Namespace exports
@@ -150,6 +154,7 @@ _ = ssljson.Analyzer
 - `github.com/github/gh-aw/pkg/linters/timeafterleak` — time-after-leak analyzer subpackage
 - `github.com/github/gh-aw/pkg/linters/tolowerequalfold` — to-lower-equal-fold analyzer subpackage
 - `github.com/github/gh-aw/pkg/linters/uncheckedtypeassertion` — unchecked-type-assertion analyzer subpackage
+- `github.com/github/gh-aw/pkg/linters/wgdonenotdeferred` — wg-done-not-deferred analyzer subpackage
 
 **Transitive / Internal helpers**:
 - `github.com/github/gh-aw/pkg/linters/internal/filecheck` — shared file-path filtering helpers used by multiple analyzers

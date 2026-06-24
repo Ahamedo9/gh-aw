@@ -40,13 +40,12 @@ jobs:
   pre-activation:
     pre-steps:
       - name: Checkout skills directory
-        uses: actions/checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           sparse-checkout: |
             .github/skills
-            .github/workflows/agentic_commands.yml
-            .github/workflows/agentic-maintenance.yml
-            actions/setup/js/slash_command_matcher.cjs
+            .github/workflows
+            actions/setup/js
           persist-credentials: false
     steps:
       - name: Match requested skill

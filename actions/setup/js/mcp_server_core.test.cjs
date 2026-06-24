@@ -354,6 +354,9 @@ describe("mcp_server_core.cjs", () => {
       expect(results[0].error.message).toContain("write-once, not a discovery probe");
       expect(results[0].error.message).toContain("tools/list");
       expect(results[0].error.message).toContain("noop");
+      // Schema guidance should be included so the model can retry without calling tools/list
+      expect(results[0].error.message).toContain("Example:");
+      expect(results[0].error.message).toContain("Required parameter");
     });
 
     it("should return enhanced error for partially-supplied but invalid required fields", async () => {
@@ -468,6 +471,127 @@ describe("mcp_server_core.cjs", () => {
       expect(results).toHaveLength(1);
       expect(results[0].result.content[0].text).toBe("default handler for no_handler_tool");
     });
+
+    it("should return the code and message from a thrown plain object (not Error instance)", async () => {
+      const { registerTool, handleMessage } = await import("./mcp_server_core.cjs");
+
+      registerTool(server, {
+        name: "plain_throw_tool",
+        description: "A tool that throws a plain object",
+        inputSchema: { type: "object", properties: { input: { type: "string" } }, required: ["input"] },
+        handler: () => {
+          throw { code: -32602, message: "ERR_VALIDATION: body required" };
+        },
+      });
+
+      await handleMessage(server, {
+        jsonrpc: "2.0",
+        id: 99,
+        method: "tools/call",
+        params: { name: "plain_throw_tool", arguments: { input: "x" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].error.code).toBe(-32602);
+      expect(results[0].error.message).toBe("ERR_VALIDATION: body required");
+      expect(results[0].error.message).not.toContain("[object Object]");
+    });
+
+    it("should fall back to -32603 when thrown plain object has no valid error code", async () => {
+      const { registerTool, handleMessage } = await import("./mcp_server_core.cjs");
+
+      registerTool(server, {
+        name: "no_code_throw_tool",
+        description: "A tool that throws a plain object without a code",
+        inputSchema: { type: "object", properties: { input: { type: "string" } }, required: ["input"] },
+        handler: () => {
+          throw { message: "something went wrong" };
+        },
+      });
+
+      await handleMessage(server, {
+        jsonrpc: "2.0",
+        id: 100,
+        method: "tools/call",
+        params: { name: "no_code_throw_tool", arguments: { input: "x" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].error.code).toBe(-32603);
+      expect(results[0].error.message).toBe("something went wrong");
+    });
+
+    it("should fall back to -32603 when thrown plain object has a positive code", async () => {
+      const { registerTool, handleMessage } = await import("./mcp_server_core.cjs");
+
+      registerTool(server, {
+        name: "positive_code_throw_tool",
+        description: "A tool that throws a plain object with a positive code",
+        inputSchema: { type: "object", properties: { input: { type: "string" } }, required: ["input"] },
+        handler: () => {
+          throw { code: 1, message: "process exited with code 1" };
+        },
+      });
+
+      await handleMessage(server, {
+        jsonrpc: "2.0",
+        id: 101,
+        method: "tools/call",
+        params: { name: "positive_code_throw_tool", arguments: { input: "x" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].error.code).toBe(-32603);
+      expect(results[0].error.message).toBe("process exited with code 1");
+    });
+
+    it("should use Internal error when thrown plain object has no message property", async () => {
+      const { registerTool, handleMessage } = await import("./mcp_server_core.cjs");
+
+      registerTool(server, {
+        name: "no_message_throw_tool",
+        description: "A tool that throws a plain object without a message",
+        inputSchema: { type: "object", properties: { input: { type: "string" } }, required: ["input"] },
+        handler: () => {
+          throw { code: -32602 };
+        },
+      });
+
+      await handleMessage(server, {
+        jsonrpc: "2.0",
+        id: 102,
+        method: "tools/call",
+        params: { name: "no_message_throw_tool", arguments: { input: "x" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].error.code).toBe(-32602);
+      expect(results[0].error.message).toBe("Internal error");
+    });
+
+    it("should fall back to -32603 when thrown plain object has a non-integer negative code", async () => {
+      const { registerTool, handleMessage } = await import("./mcp_server_core.cjs");
+
+      registerTool(server, {
+        name: "non_integer_code_throw_tool",
+        description: "A tool that throws a plain object with a non-integer code",
+        inputSchema: { type: "object", properties: { input: { type: "string" } }, required: ["input"] },
+        handler: () => {
+          throw { code: -1.5, message: "fractional code should be ignored" };
+        },
+      });
+
+      await handleMessage(server, {
+        jsonrpc: "2.0",
+        id: 103,
+        method: "tools/call",
+        params: { name: "non_integer_code_throw_tool", arguments: { input: "x" } },
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].error.code).toBe(-32603);
+      expect(results[0].error.message).toBe("fractional code should be ignored");
+    });
   });
 
   describe("handleRequest", () => {
@@ -533,6 +657,77 @@ describe("mcp_server_core.cjs", () => {
       expect(response.id).toBe(8);
       expect(response.result.isError).toBe(false);
       expect(response.result.content[0].text).toBe("received: hello");
+    });
+
+    it("should reject create_issue with a short body via handleRequest", async () => {
+      const { createServer, registerTool, handleRequest } = await import("./mcp_server_core.cjs");
+      const server = createServer({ name: "safe-outputs", version: "1.0.0" });
+
+      registerTool(server, {
+        name: "create_issue",
+        description: "Create an issue",
+        inputSchema: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Issue title" },
+            body: { type: "string", minLength: 20, description: "Issue body" },
+          },
+          required: ["title", "body"],
+        },
+        handler: args => ({
+          content: [{ type: "text", text: JSON.stringify({ result: "success" }) }],
+        }),
+      });
+
+      const response = await handleRequest(server, {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "create_issue", arguments: { title: "My Issue", body: "." } },
+      });
+
+      expect(response.error).toBeDefined();
+      expect(response.error.code).toBe(-32602);
+      expect(response.error.message).toContain("body");
+      expect(response.error.message).toContain("too short");
+      expect(response.error.message).toContain("20");
+    });
+
+    it("should return error for empty arguments object (probe detection) via handleRequest", async () => {
+      const { createServer, registerTool, handleRequest } = await import("./mcp_server_core.cjs");
+      const server = createServer({ name: "test-server", version: "1.0.0" });
+
+      registerTool(server, {
+        name: "probe_tool",
+        description: "A tool to test probe detection",
+        inputSchema: {
+          type: "object",
+          properties: { input: { type: "string", description: "Some input" } },
+          required: ["input"],
+        },
+        handler: args => ({
+          content: [{ type: "text", text: `received: ${args.input}` }],
+        }),
+      });
+
+      const response = await handleRequest(server, {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: {
+          name: "probe_tool",
+          arguments: {}, // completely empty — probe attempt
+        },
+      });
+
+      expect(response.error).toBeDefined();
+      expect(response.error.code).toBe(-32602);
+      expect(response.error.message).toContain("write-once, not a discovery probe");
+      expect(response.error.message).toContain("tools/list");
+      expect(response.error.message).toContain("noop");
+      // Schema guidance should be included so the model can retry without calling tools/list
+      expect(response.error.message).toContain("Example:");
+      expect(response.error.message).toContain("Required parameter");
     });
   });
 

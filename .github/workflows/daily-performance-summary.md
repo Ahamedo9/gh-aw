@@ -25,6 +25,8 @@ safe-outputs:
   upload-asset:
     max: 3
     allowed-exts: [.png, .jpg, .jpeg, .svg]
+  close-discussion:
+    required-title-prefix: "[daily performance] "
 timeout-minutes: 30
 imports:
   - uses: shared/daily-audit-charts.md
@@ -34,6 +36,8 @@ imports:
 
 
   - shared/otlp.md
+features:
+  gh-aw-detection: true
 ---
 
 {{#runtime-import? .github/shared-instructions.md}}

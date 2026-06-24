@@ -8,6 +8,7 @@
 //
 //	{
 //	  "ghes": true,               // enables GHES compatibility mode (v3 artifact pins)
+//	  "help_command": false,      // disables builtin centralized /help comment handler
 //	  "utc": "-08:00", // project home UTC offset for rendered local times
 //	  "auto_upgrade": true, // set to true to generate agentic-auto-upgrade.yml with weekly schedule
 //	  "maintenance": {              // enables generation of agentics-maintenance.yml
@@ -123,6 +124,11 @@ type RepoConfig struct {
 	// The value must be a numeric UTC offset such as "+00:00" or "-08:00".
 	UTC string
 
+	// HelpCommand controls builtin centralized /help command behavior.
+	// When nil or true, the builtin help command is enabled.
+	// Set to false in aw.json to disable it.
+	HelpCommand *bool
+
 	// AutoUpgrade enables generation of agentic-auto-upgrade.yml when true.
 	// The workflow runs on a fuzzy weekly schedule and runs the upgrade operation
 	// to check for and report available workflow upgrades.
@@ -155,6 +161,7 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 	// Use an intermediate struct with json.RawMessage to defer maintenance parsing.
 	var raw struct {
 		GHES        bool            `json:"ghes,omitempty"`
+		HelpCommand *bool           `json:"help_command,omitempty"` // nil = use default (enabled)
 		UTC         string          `json:"utc,omitempty"`
 		AutoUpgrade *bool           `json:"auto_upgrade,omitempty"`
 		Maintenance json.RawMessage `json:"maintenance,omitempty"`
@@ -164,6 +171,7 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	r.GHES = raw.GHES
+	r.HelpCommand = raw.HelpCommand
 	r.UTC = strings.TrimSpace(raw.UTC)
 	r.AutoUpgrade = raw.AutoUpgrade
 
@@ -187,6 +195,15 @@ func (r *RepoConfig) UnmarshalJSON(data []byte) error {
 	repoConfigLog.Printf("Maintenance field parsed as object: runsOn=%v, issueExpires=%d", mc.RunsOn, mc.ActionFailureIssueExpires)
 	r.Maintenance = &mc
 	return nil
+}
+
+// IsHelpCommandEnabled returns true when the builtin centralized /help command
+// handler should be enabled. The default is enabled.
+func (r *RepoConfig) IsHelpCommandEnabled() bool {
+	if r == nil || r.HelpCommand == nil {
+		return true
+	}
+	return *r.HelpCommand
 }
 
 // LoadRepoConfig loads and validates .github/workflows/aw.json from the

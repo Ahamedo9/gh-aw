@@ -135,8 +135,11 @@ Test workflow`
 	if strings.Contains(detectionSection, "parse_threat_detection_results.cjs") {
 		t.Error("External detector path must NOT emit parse_threat_detection_results.cjs")
 	}
-	if !strings.Contains(detectionSection, "threat-detect conclude") {
-		t.Error("External detector path must emit 'threat-detect conclude' as the conclude step")
+	if !strings.Contains(detectionSection, "conclude_threat_detection.sh") {
+		t.Error("External detector path must invoke conclude_threat_detection.sh for the conclude step")
+	}
+	if !strings.Contains(detectionSection, "GH_AW_DETECTION_CONTINUE_ON_ERROR") {
+		t.Error("External detector path must pass GH_AW_DETECTION_CONTINUE_ON_ERROR to conclude_threat_detection.sh")
 	}
 
 	// The install step must reference the pinned version
@@ -159,6 +162,12 @@ Test workflow`
 		t.Error("External detector path must invoke 'threat-detect --engine' inside AWF")
 	}
 
+	// The AWF execution step must prepend npm PATH setup so npm-installed engine CLIs
+	// (e.g. claude, codex) are found by threat-detect inside the AWF chroot.
+	if !strings.Contains(detectionSection, "RUNNER_TOOL_CACHE") {
+		t.Error("External detector AWF step must prepend npm PATH setup (RUNNER_TOOL_CACHE) so engine CLIs are on PATH")
+	}
+
 	// The upload step must include detection_result.json
 	if !strings.Contains(detectionSection, "detection_result.json") {
 		t.Error("External detector path must upload detection_result.json")
@@ -170,6 +179,14 @@ Test workflow`
 	}
 	if !strings.Contains(detectionSection, "detection_conclusion") {
 		t.Error("External detector path must contain detection_conclusion step")
+	}
+	if !strings.Contains(detectionSection, "id: parse_detection_token_usage") {
+		t.Error("External detector path must contain parse_detection_token_usage step so detection AIC is exported")
+	}
+	parseIdx := strings.Index(detectionSection, "id: parse_detection_token_usage")
+	concludeIdx := strings.Index(detectionSection, "id: detection_conclusion")
+	if concludeIdx == -1 || parseIdx >= concludeIdx {
+		t.Error("External detector path must emit parse_detection_token_usage before detection_conclusion so detection AIC is exported")
 	}
 
 	// The rw mount for the threat-detection directory must be present
@@ -204,5 +221,175 @@ Test workflow`
 	// The external detector run must inherit engine runtime env config (auth/model/etc).
 	if !strings.Contains(detectionSection, "COPILOT_GITHUB_TOKEN:") {
 		t.Error("External detector path must configure engine auth env like the agent job")
+	}
+
+}
+
+func TestExternalDetectorPathUsesCopilotForPiWorkflows(t *testing.T) {
+	compiler := NewCompiler()
+
+	tmpDir := testutil.TempDir(t, "test-external-detector-pi-*")
+	workflowPath := filepath.Join(tmpDir, "test-external-detector-pi.md")
+
+	workflowContent := `---
+on: push
+engine:
+  id: pi
+  model: copilot/gpt-5.4
+safe-outputs:
+  create-issue:
+features:
+  gh-aw-detection: true
+tools:
+  github:
+    mode: gh-proxy
+  cli-proxy: true
+---
+Test workflow`
+
+	if err := os.WriteFile(workflowPath, []byte(workflowContent), 0644); err != nil {
+		t.Fatalf("Failed to write workflow file: %v", err)
+	}
+
+	if err := compiler.CompileWorkflow(workflowPath); err != nil {
+		t.Fatalf("Failed to compile workflow: %v", err)
+	}
+
+	lockFile := stringutil.MarkdownToLockFile(workflowPath)
+	result, err := os.ReadFile(lockFile)
+	if err != nil {
+		t.Fatalf("Failed to read compiled workflow: %v", err)
+	}
+
+	detectionSection := extractJobSection(string(result), "detection")
+	if detectionSection == "" {
+		t.Fatal("Detection job not found in compiled workflow")
+	}
+
+	if !strings.Contains(detectionSection, "install_copilot_cli.sh") {
+		t.Error("Pi external detector path must install the Copilot engine")
+	}
+	if strings.Contains(detectionSection, "@earendil-works/pi-coding-agent") {
+		t.Error("Pi external detector path must not install the Pi engine")
+	}
+	if !strings.Contains(detectionSection, "threat-detect --engine copilot") {
+		t.Error("Pi external detector path must invoke threat-detect with the copilot engine")
+	}
+	if strings.Contains(detectionSection, "threat-detect --engine pi") {
+		t.Error("Pi external detector path must not invoke threat-detect with the pi engine")
+	}
+	if !strings.Contains(detectionSection, "COPILOT_GITHUB_TOKEN:") {
+		t.Error("Pi external detector path must inherit Copilot auth env")
+	}
+}
+
+func TestInlineDetectionUsesCopilotForPiWorkflows(t *testing.T) {
+	compiler := NewCompiler()
+
+	tmpDir := testutil.TempDir(t, "test-inline-detector-pi-*")
+	workflowPath := filepath.Join(tmpDir, "test-inline-detector-pi.md")
+
+	workflowContent := `---
+on: push
+engine:
+  id: pi
+  model: copilot/gpt-5.4
+safe-outputs:
+  create-issue:
+tools:
+  github:
+    mode: gh-proxy
+  cli-proxy: true
+---
+Test workflow`
+
+	if err := os.WriteFile(workflowPath, []byte(workflowContent), 0644); err != nil {
+		t.Fatalf("Failed to write workflow file: %v", err)
+	}
+
+	if err := compiler.CompileWorkflow(workflowPath); err != nil {
+		t.Fatalf("Failed to compile workflow: %v", err)
+	}
+
+	lockFile := stringutil.MarkdownToLockFile(workflowPath)
+	result, err := os.ReadFile(lockFile)
+	if err != nil {
+		t.Fatalf("Failed to read compiled workflow: %v", err)
+	}
+
+	detectionSection := extractJobSection(string(result), "detection")
+	if detectionSection == "" {
+		t.Fatal("Detection job not found in compiled workflow")
+	}
+
+	if !strings.Contains(detectionSection, "install_copilot_cli.sh") {
+		t.Error("Pi inline detection path must install the Copilot engine")
+	}
+	if strings.Contains(detectionSection, "@earendil-works/pi-coding-agent") {
+		t.Error("Pi inline detection path must not install the Pi engine")
+	}
+	if !strings.Contains(detectionSection, "COPILOT_GITHUB_TOKEN:") {
+		t.Error("Pi inline detection path must inherit Copilot auth env")
+	}
+}
+
+func TestExternalDetectorPathPreparesCodexConfig(t *testing.T) {
+	compiler := NewCompiler()
+
+	tmpDir := testutil.TempDir(t, "test-external-detector-codex-*")
+	workflowPath := filepath.Join(tmpDir, "test-external-detector-codex.md")
+
+	workflowContent := `---
+on: push
+engine: codex
+safe-outputs:
+  create-issue:
+features:
+  gh-aw-detection: true
+tools:
+  github:
+    mode: gh-proxy
+---
+Test workflow`
+
+	if err := os.WriteFile(workflowPath, []byte(workflowContent), 0644); err != nil {
+		t.Fatalf("Failed to write workflow file: %v", err)
+	}
+
+	if err := compiler.CompileWorkflow(workflowPath); err != nil {
+		t.Fatalf("Failed to compile workflow: %v", err)
+	}
+
+	lockFile := stringutil.MarkdownToLockFile(workflowPath)
+	result, err := os.ReadFile(lockFile)
+	if err != nil {
+		t.Fatalf("Failed to read compiled workflow: %v", err)
+	}
+
+	detectionSection := extractJobSection(string(result), "detection")
+	if detectionSection == "" {
+		t.Fatal("Detection job not found in compiled workflow")
+	}
+
+	if !strings.Contains(detectionSection, "Prepare Codex config for threat-detect") {
+		t.Error("Codex external detector path must prepare Codex config files before execution")
+	}
+	if !strings.Contains(detectionSection, string(constants.ShellMcpServersJsonPath)) {
+		t.Error("Codex external detector path must create an empty mcp-servers.json for Codex")
+	}
+	if !strings.Contains(detectionSection, string(constants.TmpMcpConfigDir)+"/config.toml") {
+		t.Error("Codex external detector path must create a writable CODEX_HOME config.toml")
+	}
+	if !strings.Contains(detectionSection, "model_provider = \"openai-proxy\"") {
+		t.Error("Codex external detector path must route Codex through the AWF OpenAI proxy")
+	}
+	if !strings.Contains(detectionSection, "api_base = \"http://") {
+		t.Error("Codex external detector path must set api_base in config.toml")
+	}
+	if !strings.Contains(detectionSection, "wss_base = \"ws://") {
+		t.Error("Codex external detector path must set wss_base in config.toml")
+	}
+	if !strings.Contains(detectionSection, "supports_websockets = false") {
+		t.Error("Codex external detector path must disable websocket startup for the proxy config")
 	}
 }

@@ -1040,6 +1040,8 @@ func (c *Compiler) buildUpdateCacheMemoryJob(data *WorkflowData, threatDetection
 	// Job condition: run only if detection job succeeded (no threats found),
 	// AND the agent job succeeded (do not persist cache when agent failed or was skipped).
 	// Using always() so this condition is evaluated even if an upstream job is skipped/failed.
+	// Detection always runs when the agent ran (even for noop), so detection.result == 'success'
+	// is sufficient — detection short-circuits with success=true when there is nothing to analyze.
 	agentSucceeded := BuildEquals(
 		BuildPropertyAccess(fmt.Sprintf("needs.%s.result", constants.AgentJobName)),
 		BuildStringLiteral("success"),
@@ -1064,7 +1066,7 @@ func (c *Compiler) buildUpdateCacheMemoryJob(data *WorkflowData, threatDetection
 	}
 
 	job := &Job{
-		Name:        "update_cache_memory",
+		Name:        updateCacheMemoryJobName,
 		DisplayName: "", // No display name - job ID is sufficient
 		RunsOn:      c.formatFrameworkJobRunsOn(data),
 		If:          jobCondition,

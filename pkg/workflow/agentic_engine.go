@@ -9,6 +9,7 @@ import (
 
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/logger"
+	"github.com/github/gh-aw/pkg/setutil"
 )
 
 var agenticEngineLog = logger.New("workflow:agentic_engine")
@@ -219,6 +220,16 @@ type ModelEnvVarProvider interface {
 	// uses for model selection (e.g., "COPILOT_MODEL", "ANTHROPIC_MODEL", "ANTIGRAVITY_MODEL").
 	// Returns an empty string if the engine does not support a native model env var.
 	GetModelEnvVarName() string
+}
+
+// LLMProviderResolver is implemented by engines that support selecting
+// different inference providers at runtime (for example engine.model-provider).
+// This interface is intentionally separate from CodingAgentEngine so provider
+// concerns remain decoupled from core engine execution capabilities.
+type LLMProviderResolver interface {
+	// ResolveLLMProvider returns the effective provider for the workflow
+	// (for example "github", "anthropic", or "openai").
+	ResolveLLMProvider(workflowData *WorkflowData) string
 }
 
 // AgentFileProvider is an optional interface implemented by engines that have
@@ -562,7 +573,7 @@ func (r *EngineRegistry) computeAllAgentManifestFolders() []string {
 		}
 		for _, prefix := range provider.GetAgentManifestPathPrefixes() {
 			folder := strings.TrimSuffix(prefix, "/")
-			if folder != "" && !hasStringKey(seen, folder) {
+			if folder != "" && !setutil.Contains(seen, folder) {
 				seen[folder] = struct {
 				}{}
 				result = append(result, folder)
@@ -571,7 +582,7 @@ func (r *EngineRegistry) computeAllAgentManifestFolders() []string {
 	}
 	// Always include .agents — the gh-aw platform agent directory.
 	// It is not owned by any specific engine but must always be snapshotted.
-	if !hasStringKey(seen, ".agents") {
+	if !setutil.Contains(seen, ".agents") {
 		result = append(result, ".agents")
 	}
 	sort.Strings(result)
@@ -604,7 +615,7 @@ func (r *EngineRegistry) computeAllAgentManifestFiles() []string {
 			continue
 		}
 		for _, file := range provider.GetAgentManifestFiles() {
-			if !hasStringKey(seen, file) {
+			if !setutil.Contains(seen, file) {
 				seen[file] = struct {
 				}{}
 				result = append(result, file)

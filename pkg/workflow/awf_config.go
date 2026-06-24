@@ -65,10 +65,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/jsonutil"
 	"github.com/github/gh-aw/pkg/logger"
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/github/gh-aw/pkg/setutil"
 )
 
 //go:embed schemas/awf-config.schema.json
@@ -160,6 +162,9 @@ type AWFConfigFile struct {
 	// Network contains network egress control configuration.
 	Network *AWFNetworkConfig `json:"network,omitempty"`
 
+	// Platform contains GitHub deployment metadata used by AWF auth handling.
+	Platform *AWFPlatformConfig `json:"platform,omitempty"`
+
 	// APIProxy contains API proxy (LLM gateway) configuration.
 	APIProxy *AWFAPIProxyConfig `json:"apiProxy,omitempty"`
 
@@ -182,6 +187,20 @@ type AWFNetworkConfig struct {
 	// BlockDomains is the list of explicitly blocked egress domains.
 	// Maps to: --block-domains <comma-separated>
 	BlockDomains []string `json:"blockDomains,omitempty"`
+
+	// Isolation enables topology-based egress isolation mode.
+	// Maps to: --network-isolation
+	Isolation bool `json:"isolation,omitempty"`
+
+	// TopologyAttach lists container names AWF should attach to awf-net.
+	// Maps to: --topology-attach <name> (repeatable)
+	TopologyAttach []string `json:"topologyAttach,omitempty"`
+}
+
+// AWFPlatformConfig is the "platform" section of the AWF config file.
+type AWFPlatformConfig struct {
+	// Type is the GitHub deployment type consumed by AWF for auth behavior.
+	Type string `json:"type,omitempty"`
 }
 
 // AWFAPIProxyConfig is the "apiProxy" section of the AWF config file.
@@ -350,6 +369,20 @@ func BuildAWFConfigJSON(config AWFCommandConfig) (string, error) {
 		}
 	}
 
+	if isAWFNetworkIsolationEnabled(config.WorkflowData) {
+		if awfConfig.Network == nil {
+			awfConfig.Network = &AWFNetworkConfig{}
+		}
+		awfConfig.Network.Isolation = true
+		awfConfig.Network.TopologyAttach = buildAWFTopologyAttachList(config.WorkflowData)
+		awfConfigLog.Printf("Network section: isolation enabled with %d topology attachments", len(awfConfig.Network.TopologyAttach))
+	}
+
+	if platformType := extractPlatformType(config.WorkflowData); platformType != "" {
+		awfConfig.Platform = &AWFPlatformConfig{Type: platformType}
+		awfConfigLog.Printf("Platform section: type=%s", platformType)
+	}
+
 	// ── API proxy section ─────────────────────────────────────────────────────
 	// maxAICredits is taken from frontmatter/imports only; when unset (0) the
 	// runtime value is resolved from vars.GH_AW_DEFAULT_MAX_AI_CREDITS via a
@@ -487,6 +520,18 @@ func BuildAWFConfigJSON(config AWFCommandConfig) (string, error) {
 	return jsonStr, nil
 }
 
+// buildAWFTopologyAttachList returns container names that AWF should attach to
+// the internal awf-net network when network isolation mode is enabled.
+// The list always includes the MCP gateway and conditionally includes the
+// host-started CLI proxy sidecar when gh-proxy mode is active.
+func buildAWFTopologyAttachList(workflowData *WorkflowData) []string {
+	targets := []string{"awmg-mcpg"}
+	if isCliProxyNeeded(workflowData) {
+		targets = append(targets, "awmg-cli-proxy")
+	}
+	return targets
+}
+
 // splitDomainList splits a comma-separated domain string into a deduplicated
 // slice. Empty entries are ignored. The order of the original list is preserved for
 // non-duplicate entries; this keeps the allow-list deterministic.
@@ -496,7 +541,7 @@ func splitDomainList(domains string) []string {
 	})
 	for d := range strings.SplitSeq(domains, ",") {
 		d = strings.TrimSpace(d)
-		if d != "" && !hasStringKey(seen, d) {
+		if d != "" && !setutil.Contains(seen, d) {
 			seen[d] = struct {
 			}{}
 			result = append(result, d)
@@ -513,6 +558,21 @@ func extractModelMultipliers(workflowData *WorkflowData) map[string]float64 {
 		return nil
 	}
 	return workflowData.EngineConfig.TokenWeights.Multipliers
+}
+
+// extractPlatformType returns sandbox.agent.platform only for enabled AWF sandbox
+// agents, or an empty string to let AWF fall back to its default platform logic.
+func extractPlatformType(workflowData *WorkflowData) string {
+	if workflowData == nil || workflowData.SandboxConfig == nil || workflowData.SandboxConfig.Agent == nil {
+		return ""
+	}
+	if workflowData.SandboxConfig.Agent.Disabled {
+		return ""
+	}
+	if !isSupportedSandboxType(getAgentType(workflowData.SandboxConfig.Agent)) {
+		return ""
+	}
+	return workflowData.SandboxConfig.Agent.Platform
 }
 
 // extractModelFallback returns an AWFModelFallbackConfig if the workflow has configured
