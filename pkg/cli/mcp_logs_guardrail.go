@@ -51,7 +51,7 @@ func buildLogsFileResponse(outputStr string) string {
 			return buildLogsFileErrorResponse(fmt.Sprintf("logs cache path %q is not a directory", mcpLogsCacheDir))
 		}
 	} else if os.IsNotExist(err) {
-		if mkErr := os.MkdirAll(mcpLogsCacheDir, constants.DirPermPublic); mkErr != nil && !os.IsExist(mkErr) {
+		if mkErr := os.MkdirAll(mcpLogsCacheDir, constants.DirPermSensitive); mkErr != nil && !os.IsExist(mkErr) {
 			mcpLogsGuardrailLog.Printf("Failed to create logs cache directory: %v", mkErr)
 			return buildLogsFileErrorResponse(fmt.Sprintf("failed to create logs cache directory: %v", mkErr))
 		}
@@ -59,7 +59,7 @@ func buildLogsFileResponse(outputStr string) string {
 		mcpLogsGuardrailLog.Printf("Failed to stat logs cache directory: %v", err)
 		return buildLogsFileErrorResponse(fmt.Sprintf("failed to access logs cache directory: %v", err))
 	}
-	if chmodErr := os.Chmod(mcpLogsCacheDir, constants.DirPermPublic); chmodErr != nil {
+	if chmodErr := os.Chmod(mcpLogsCacheDir, constants.DirPermSensitive); chmodErr != nil {
 		mcpLogsGuardrailLog.Printf("Failed to set logs cache directory permissions: %v", chmodErr)
 		return buildLogsFileErrorResponse(fmt.Sprintf("failed to set logs cache directory permissions: %v", chmodErr))
 	}
@@ -77,7 +77,7 @@ func buildLogsFileResponse(outputStr string) string {
 		if !fileInfo.Mode().IsRegular() {
 			return buildLogsFileErrorResponse(fmt.Sprintf("logs cache file path %q is not a regular file", filePath))
 		}
-		if chmodErr := os.Chmod(filePath, constants.FilePermPublic); chmodErr != nil {
+		if chmodErr := os.Chmod(filePath, constants.FilePermSensitive); chmodErr != nil {
 			mcpLogsGuardrailLog.Printf("Failed to update logs cache file permissions: %v", chmodErr)
 			return buildLogsFileErrorResponse(fmt.Sprintf("failed to set logs cache file permissions: %v", chmodErr))
 		}
@@ -85,7 +85,7 @@ func buildLogsFileResponse(outputStr string) string {
 	} else if os.IsNotExist(err) {
 		// Write with O_EXCL to avoid following symlinks or races.
 		writeErr := func() (err error) {
-			f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, constants.FilePermPublic)
+			f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, constants.FilePermSensitive)
 			if err != nil {
 				return fmt.Errorf("failed to create logs cache file: %w", err)
 			}
@@ -105,7 +105,7 @@ func buildLogsFileResponse(outputStr string) string {
 			_ = os.Remove(filePath)
 			return buildLogsFileErrorResponse(writeErr.Error())
 		}
-		if chmodErr := os.Chmod(filePath, constants.FilePermPublic); chmodErr != nil {
+		if chmodErr := os.Chmod(filePath, constants.FilePermSensitive); chmodErr != nil {
 			_ = os.Remove(filePath)
 			mcpLogsGuardrailLog.Printf("Failed to set logs cache file permissions: %v", chmodErr)
 			return buildLogsFileErrorResponse(fmt.Sprintf("failed to set logs cache file permissions: %v", chmodErr))

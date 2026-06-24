@@ -292,9 +292,15 @@ func flattenAgentOutputsArtifact(outputDir string, verbose bool) error {
 func downloadWorkflowRunLogs(ctx context.Context, runID int64, outputDir string, verbose bool, owner, repo, hostname string) error {
 	logsDownloadLog.Printf("Downloading workflow run logs: run_id=%d, output_dir=%s, owner=%s, repo=%s", runID, outputDir, owner, repo)
 
-	// Create a temporary file for the zip download
-	tmpZip := filepath.Join(os.TempDir(), fmt.Sprintf("workflow-logs-%d.zip", runID))
-	defer os.RemoveAll(tmpZip)
+	// Create a temporary file for the zip download using a secure random name.
+	// This prevents symlink-based directory traversal attacks.
+	tmpFile, err := os.CreateTemp("", fmt.Sprintf("workflow-logs-%d-*.zip", runID))
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file for logs: %w", err)
+	}
+	tmpZip := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpZip)
 
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage(fmt.Sprintf("Downloading workflow run logs for run %d...", runID)))
@@ -333,14 +339,15 @@ func downloadWorkflowRunLogs(ctx context.Context, runID int64, outputDir string,
 		return fmt.Errorf("failed to download workflow run logs for run %d: %w", runID, err)
 	}
 
-	// Write the downloaded zip content to temporary file
-	if err := os.WriteFile(tmpZip, output, constants.FilePermPublic); err != nil {
+	// Write the downloaded zip content to temporary file with sensitive permissions.
+	if err := os.WriteFile(tmpZip, output, constants.FilePermSensitive); err != nil {
 		return fmt.Errorf("failed to write logs zip file: %w", err)
 	}
 
-	// Create a subdirectory for workflow logs to keep the run directory organized
+	// Create a subdirectory for workflow logs to keep the run directory organized.
+	// Use sensitive permissions for downloaded logs.
 	workflowLogsDir := filepath.Join(outputDir, "workflow-logs")
-	if err := os.MkdirAll(workflowLogsDir, constants.DirPermPublic); err != nil {
+	if err := os.MkdirAll(workflowLogsDir, constants.DirPermSensitive); err != nil {
 		return fmt.Errorf("failed to create workflow-logs directory: %w", err)
 	}
 

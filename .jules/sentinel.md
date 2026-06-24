@@ -1,0 +1,4 @@
+## 2026-06-23 - Hardened Temporary File and Directory Handling
+**Vulnerability:** Insecure temporary file creation and overly permissive directory permissions in shared `/tmp` space. Predictable filenames in `downloadWorkflowRunLogs` and public permissions (0644/0755) for logs containing potentially sensitive data.
+**Learning:** The codebase frequently uses `/tmp` for caching and temporary storage. Without `os.CreateTemp` and explicit `os.Lstat` symlink checks, these sites are vulnerable to symlink-based directory traversal or file hijacking. Public permissions on logs can leak sensitive environment data or GitHub tokens to other users on a shared runner.
+**Prevention:** Always use `os.CreateTemp` for randomized filenames in `/tmp`. Use `os.Lstat` to verify directory identity before access. Apply `constants.FilePermSensitive` (0600) and `constants.DirPermSensitive` (0750) for any file containing log data or metadata.

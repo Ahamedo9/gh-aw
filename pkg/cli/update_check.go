@@ -126,10 +126,25 @@ func getLastCheckFilePathFor(fileName string) string {
 		return ""
 	}
 
-	// Create a gh-aw subdirectory in temp
+	// Create a gh-aw subdirectory in temp.
+	// Verify it's not a symlink to prevent symlink-based directory attacks.
 	ghAwTmpDir := filepath.Join(tmpDir, "gh-aw")
-	if err := os.MkdirAll(ghAwTmpDir, constants.DirPermPublic); err != nil {
-		updateCheckLog.Printf("Error creating gh-aw temp directory: %v", err)
+	if info, err := os.Lstat(ghAwTmpDir); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			updateCheckLog.Printf("Error: %q is a symlink; refusing to use it for update check", ghAwTmpDir)
+			return ""
+		}
+		if !info.IsDir() {
+			updateCheckLog.Printf("Error: %q is not a directory", ghAwTmpDir)
+			return ""
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(ghAwTmpDir, constants.DirPermPublic); err != nil {
+			updateCheckLog.Printf("Error creating gh-aw temp directory: %v", err)
+			return ""
+		}
+	} else {
+		updateCheckLog.Printf("Error accessing gh-aw temp directory: %v", err)
 		return ""
 	}
 
@@ -144,7 +159,8 @@ func updateLastCheckTime() {
 	}
 
 	timestamp := time.Now().Format(time.RFC3339)
-	if err := os.WriteFile(lastCheckFile, []byte(timestamp), constants.FilePermPublic); err != nil {
+	// Use sensitive permissions for the last-check timestamp file.
+	if err := os.WriteFile(lastCheckFile, []byte(timestamp), constants.FilePermSensitive); err != nil {
 		updateCheckLog.Printf("Error writing last check time: %v", err)
 	}
 }
