@@ -410,8 +410,6 @@ func (e *ExpressionExtractor) generateEnvVarName(content string) string {
 func (e *ExpressionExtractor) ReplaceExpressionsWithEnvVars(markdown string) string {
 	expressionExtractionLog.Printf("Replacing expressions with env vars: mapping_count=%d", len(e.mappings))
 
-	result := markdown
-
 	// Sort mappings by length of original expression (longest first)
 	// This ensures we replace longer expressions before shorter ones
 	// to avoid partial replacements
@@ -431,13 +429,16 @@ func (e *ExpressionExtractor) ReplaceExpressionsWithEnvVars(markdown string) str
 	})
 
 	// Replace each expression with its environment variable reference
-	// Use __VAR__ placeholder format to prevent template injection
+	// Use __VAR__ placeholder format to prevent template injection.
+	// We use strings.Replacer for better performance as it performs all replacements
+	// in a single pass over the string.
+	replacements := make([]string, 0, len(mappings)*2)
 	for _, mapping := range mappings {
-		placeholder := fmt.Sprintf("__%s__", mapping.EnvVar)
-		result = strings.ReplaceAll(result, mapping.Original, placeholder)
+		replacements = append(replacements, mapping.Original, fmt.Sprintf("__%s__", mapping.EnvVar))
 	}
+	replacer := strings.NewReplacer(replacements...)
 
-	return result
+	return replacer.Replace(markdown)
 }
 
 // applyWorkflowDispatchFallbacks enhances entity number expressions with an
