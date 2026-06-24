@@ -46,6 +46,9 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
+	if err := validateGitRef(ref); err != nil {
+		return "", err
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
@@ -448,6 +451,10 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 	remoteLog.Printf("Attempting git ls-remote fallback for ref resolution: %s/%s@%s", owner, repo, ref)
 
+	if err := validateGitRef(ref); err != nil {
+		return "", err
+	}
+
 	var githubHost string
 	if host != "" {
 		githubHost = "https://" + host
@@ -600,6 +607,10 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string) ([]byte, error) {
 	remoteLog.Printf("Attempting git fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
+	if err := validateGitRef(ref); err != nil {
+		return nil, err
+	}
+
 	// First, try via raw.githubusercontent.com — no auth required for public repos and
 	// no dependency on git being installed.
 	// Only attempt raw URL for github.com repos (not GHE) since raw.githubusercontent.com
@@ -680,6 +691,10 @@ func downloadFileViaRawURL(ctx context.Context, owner, repo, filePath, ref strin
 // This is used as a fallback when git archive doesn't work
 func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error) {
 	remoteLog.Printf("Attempting git clone fallback for %s/%s/%s@%s", owner, repo, path, ref)
+
+	if err := validateGitRef(ref); err != nil {
+		return nil, err
+	}
 
 	// Create a temporary directory for the shallow clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-git-clone-*")
@@ -858,6 +873,17 @@ func resolveAndValidateRemoteSymlinkBase(parentDir, target, dirPath string) (str
 		return "", fmt.Errorf("symlink target %q at %s resolves outside repository root: %s", target, dirPath, resolvedBase)
 	}
 	return resolvedBase, nil
+}
+
+// validateGitRef returns an error if the provided git reference starts with '-'.
+// This prevents argument injection into git commands when the ref is passed
+// as a command-line argument.
+func validateGitRef(ref string) error {
+	if strings.HasPrefix(strings.TrimSpace(ref), "-") {
+		remoteLog.Printf("Security: Rejecting git ref starting with hyphen: %q", ref)
+		return fmt.Errorf("security: git reference %q is invalid: must not start with '-'", ref)
+	}
+	return nil
 }
 
 // DownloadFileFromGitHub downloads a file from a GitHub repository using the GitHub API.
@@ -1477,6 +1503,10 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 
 func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
 	remoteLog.Printf("Attempting git fallback for listing workflow files: %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
+
+	if err := validateGitRef(ref); err != nil {
+		return nil, err
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {

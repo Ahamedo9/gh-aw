@@ -56,3 +56,64 @@ func TestListContentsRecursivelyWithDepth_MaxDepthGuard(t *testing.T) {
 		t.Fatalf("expected depth limit error, got %q", err)
 	}
 }
+
+func TestGitRefValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		ref         string
+		expectError bool
+	}{
+		{
+			name:        "valid branch name",
+			ref:         "main",
+			expectError: false,
+		},
+		{
+			name:        "valid feature branch",
+			ref:         "feature/safe",
+			expectError: false,
+		},
+		{
+			name:        "valid tag",
+			ref:         "v1.0.0",
+			expectError: false,
+		},
+		{
+			name:        "valid SHA",
+			ref:         "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+			expectError: false,
+		},
+		{
+			name:        "invalid hyphen prefix",
+			ref:         "-exploit",
+			expectError: true,
+		},
+		{
+			name:        "invalid double hyphen prefix",
+			ref:         "--upload-pack=touch /tmp/pwned",
+			expectError: true,
+		},
+		{
+			name:        "invalid hyphen prefix with spaces",
+			ref:         "  -invalid",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateGitRef(tt.ref)
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error for ref %q but got none", tt.ref)
+				} else if !strings.Contains(err.Error(), "must not start with '-'") {
+					t.Errorf("expected security error message, got: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for ref %q: %v", tt.ref, err)
+				}
+			}
+		})
+	}
+}

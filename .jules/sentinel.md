@@ -1,0 +1,4 @@
+## 2026-06-21 - [Reusable Security Pattern] Git Argument Injection Prevention
+**Vulnerability:** User-supplied git references (branches, tags, SHAs) used in remote fetch operations were passed directly to `exec.Command("git", ...)` without hyphen-prefix validation. An attacker could provide a `ref` like `--upload-pack=...` to achieve argument injection.
+**Learning:** While other package managers (npm, pip) and Docker had established hyphen-prefix rejection in `pkg/workflow/name_validation.go`, the `pkg/parser` package performs its own git-based fallbacks and lacked this protection. Due to dependency layering, it could not reuse the `pkg/workflow` helpers.
+**Prevention:** Always validate CLI arguments derived from external workflow specifications in both `pkg/parser` and `pkg/workflow`. Added `validateGitRef` to `pkg/parser/remote_fetch.go` as a standard guard for all git CLI invocations involving user-controlled refs.
