@@ -2,7 +2,7 @@
   "counts": {
     "output_format": {
       "concise": 10,
-      "detailed": 5
+      "detailed": 6
     }
   },
   "runs": [
@@ -107,6 +107,13 @@
     {
       "run_id": "28737929113",
       "timestamp": "2026-07-05T10:36:42.534Z",
+      "assignments": {
+        "output_format": "detailed"
+      }
+    },
+    {
+      "run_id": "28800076885",
+      "timestamp": "2026-07-06T14:44:00.751Z",
       "assignments": {
         "output_format": "detailed"
       }
