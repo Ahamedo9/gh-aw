@@ -1,28 +1,13 @@
 {
   "counts": {
     "detail_level": {
-      "comprehensive": 2,
-      "brief": 1
+      "comprehensive": 1
     }
   },
   "runs": [
     {
-      "run_id": "27981097424",
-      "timestamp": "2026-06-22T20:16:01.296Z",
-      "assignments": {
-        "detail_level": "comprehensive"
-      }
-    },
-    {
-      "run_id": "28392306444",
-      "timestamp": "2026-06-29T17:59:34.978Z",
-      "assignments": {
-        "detail_level": "brief"
-      }
-    },
-    {
-      "run_id": "28812245904",
-      "timestamp": "2026-07-06T17:58:43.995Z",
+      "run_id": "29268799330",
+      "timestamp": "2026-07-13T17:02:27.468Z",
       "assignments": {
         "detail_level": "comprehensive"
       }
